@@ -41,8 +41,9 @@ void usage(void) {
   fprintf(stderr, "  %s  <int>        Minimum overlap of the paired-end reads (def. 20)\n", OVERLAP);
   fprintf(stderr, "  %s  <float>      Mismatches to allow in the overlapped region\n", MISMATCH);
   fprintf(stderr, "                     (in [0-1], a fraction of the overlap length; def. 0)\n");
-  fprintf(stderr, "  %s               Option to check for dovetailing of the reads (with 3'\n", DOVEOPT);
-  fprintf(stderr, "                     overhang(s); min. overlap from %s still applies)\n", OVERLAP);
+  fprintf(stderr, "  %s               Option to check for dovetailing of the reads (with\n", DOVEOPT);
+  fprintf(stderr, "                     3' overhang(s))\n");
+  fprintf(stderr, "  %s <int>        Minimum overlap of dovetailed reads (def. %s value)\n", DOVEOVER, OVERLAP);
   fprintf(stderr, "  %s <file>       Log file for dovetailed reads only\n", DOVEFILE);
   fprintf(stderr, "  %s               Option to produce shortest stitched read, given\n", MAXOPT);
   fprintf(stderr, "                     multiple overlapping possibilities (by default,\n");
@@ -198,8 +199,8 @@ float compare(char* seq1, char* seq2, int length,
  */
 int findPos (char* seq1, char* seq2, char* qual1,
     char* qual2, int len1, int len2, int overlap,
-    int dovetail, float mismatch, int maxLen,
-    float* best) {
+    int dovetail, int doveOverlap, float mismatch,
+    int maxLen, float* best) {
   int pos = len1 - overlap + 1;  // position of match
   for (int i = len1 - overlap; i > -1; i--) {
     if (len1 - i > len2 && !dovetail)
@@ -216,9 +217,9 @@ int findPos (char* seq1, char* seq2, char* qual1,
 
   // check for dovetailing
   if (dovetail) {
-    for (int i = 1; i < len2 - overlap + 1; i++) {
+    for (int i = 1; i < len2 - doveOverlap + 1; i++) {
       float res = compare(seq1, seq2 + i,
-        len2-i < len1 ? len2-i : len1, mismatch, overlap);
+        len2-i < len1 ? len2-i : len1, mismatch, doveOverlap);
       if (res < *best || (res == *best && !maxLen)) {
         *best = res;
         pos = -i;
@@ -412,8 +413,8 @@ void printFail(File un1, File un2, int unOpt,
  */
 int readFile(File in1, File in2, File out, File out2,
     File un1, File un2, int unOpt, File log,
-    int logOpt, int overlap, int dovetail, File dove,
-    int doveOpt, int adaptOpt, float mismatch,
+    int logOpt, int overlap, int dovetail, int doveOverlap,
+    File dove, int doveOpt, int adaptOpt, float mismatch,
     int maxLen, int* stitch, int* fail, int gz) {
 
   char* line = (char*) memalloc(MAX_SIZE);
@@ -465,7 +466,7 @@ int readFile(File in1, File in2, File out, File out2,
     // stitch reads, print result
     float best = 1.0f;
     int pos = findPos(seq1, seq2, qual1, qual2, len1, len2,
-      overlap, dovetail, mismatch, maxLen, &best);
+      overlap, dovetail, doveOverlap, mismatch, maxLen, &best);
     if (pos == len1 - overlap + 1) {
       if (adaptOpt) {
         printFail(out, out2, 1, log, 0, header, head1,
@@ -595,7 +596,8 @@ void getParams(int argc, char** argv) {
   char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
     *unFile1 = NULL, *unFile2 = NULL, *logFile = NULL,
     *doveFile = NULL;
-  int overlap = DEFOVER, dovetail = 0, adaptOpt = 0, maxLen = 1;
+  int overlap = DEFOVER, dovetail = 0, doveOverlap = 0,
+    adaptOpt = 0, maxLen = 1;
   int verbose = 0;
   float mismatch = DEFMISM;
 
@@ -628,6 +630,8 @@ void getParams(int argc, char** argv) {
         doveFile = argv[++i];
       else if (!strcmp(argv[i], OVERLAP))
         overlap = getInt(argv[++i]);
+      else if (!strcmp(argv[i], DOVEOVER))
+        doveOverlap = getInt(argv[++i]);
       else if (!strcmp(argv[i], MISMATCH))
         mismatch = getFloat(argv[++i]);
       else
@@ -644,11 +648,13 @@ void getParams(int argc, char** argv) {
   if (mismatch < 0.0f || mismatch >= 1.0f)
     exit(error("", ERRMISM));
 
-  // adjust parameters if removing adapters
+  // adjust parameters
   if (adaptOpt) {
     dovetail = 1;
     unFile1 = logFile = NULL;
   }
+  if (dovetail && doveOverlap <= 0)
+    doveOverlap = overlap;
 
   // determine if inputs are gzip compressed
   int gz = 0;
@@ -666,8 +672,9 @@ void getParams(int argc, char** argv) {
   int stitch = 0, fail = 0;  // counting variables
   int count = readFile(in1, in2, out, out2, un1, un2,
     unFile1 != NULL && unFile2 != NULL, log, logFile != NULL,
-    overlap, dovetail, dove, dovetail && doveFile != NULL,
-    adaptOpt, mismatch, maxLen, &stitch, &fail, gz);
+    overlap, dovetail, doveOverlap, dove,
+    dovetail && doveFile != NULL, adaptOpt, mismatch,
+    maxLen, &stitch, &fail, gz);
 
   if (verbose) {
     printf("Reads analyzed: %d\n", count);

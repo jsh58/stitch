@@ -20,6 +20,7 @@
 #define OVERLAP     "-m"
 #define MISMATCH    "-p"
 #define DOVEOPT     "-d"
+#define DOVEOVER    "-dm"
 #define DOVEFILE    "-dl"
 #define MAXOPT      "-n"
 #define ADAPTOPT    "-a"
