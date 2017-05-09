@@ -24,14 +24,10 @@ void usage(void) {
   fprintf(stderr, "  %s  <file>       Output FASTQ file name:\n", OUTFILE);
   fprintf(stderr, "                     - in 'stitch' mode (def.), the file of merged reads\n");
   fprintf(stderr, "                     - in 'adapter removal mode' (%s), the output files\n", ADAPTOPT);
-  fprintf(stderr, "                       will be <file>_R1.fastq and <file>_R2.fastq.\n");
-  fprintf(stderr, "  Note: Both input files can be gzip compressed (with \"%s\"\n", GZEXT);
+  fprintf(stderr, "                       will be <file>%s and <file>%s.\n", ONEEXT, TWOEXT);
+  fprintf(stderr, "  Note: Both input files can be gzip compressed (with '%s'\n", GZEXT);
   fprintf(stderr, "    extensions), in which case the output FASTQ file(s) will also\n");
   fprintf(stderr, "    be gzip compressed.\n");
-  fprintf(stderr, "    Also, reads in both input files can be trimmed of poor quality\n");
-  fprintf(stderr, "    bases prior to using this program, but, since the stitched read\n");
-  fprintf(stderr, "    is defined by the 5' ends of the PE reads, one should be wary\n");
-  fprintf(stderr, "    of trimming them at that end.\n");
   fprintf(stderr, "Optional parameters:\n");
   fprintf(stderr, "  %s               Option to remove adapters and leave reads unstitched\n", ADAPTOPT);
   fprintf(stderr, "                     (automatically sets %s option)\n", DOVEOPT);
