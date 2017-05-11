@@ -2,8 +2,11 @@
   John M. Gaspar (jsh58@wildcats.unh.edu)
   April 2015 (updated July 2016, Apr. 2017)
 
-  Stitching paired-end reads together.
-  Adding adapter removal option (no stitching).
+  Analyzing paired-end reads for overlaps. Two modes:
+  - 'stitch': producing a single, merged read for reads
+     with sufficient overlaps
+  - 'adapter removal': removing adapters (3' overhangs
+     of stitched alignment) from individual reads
 */
 
 #include <stdio.h>
@@ -673,7 +676,7 @@ void getParams(int argc, char** argv) {
     maxLen, &stitch, &fail, gz);
 
   if (verbose) {
-    printf("Reads analyzed: %d\n", count);
+    printf("Fragments (pairs of reads) analyzed: %d\n", count);
     if (adaptOpt)
       printf("  Adapters removed: %d\n", stitch);
     else {
