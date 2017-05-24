@@ -39,7 +39,8 @@ void usage(void) {
   fprintf(stderr, "  %s <file>       FASTQ file containing non-stitched reverse reads\n", UNFILE2);
   fprintf(stderr, "  %s  <int>        Minimum overlap of the paired-end reads (def. 20)\n", OVERLAP);
   fprintf(stderr, "  %s  <float>      Mismatches to allow in the overlapped region\n", MISMATCH);
-  fprintf(stderr, "                     (in [0-1], a fraction of the overlap length; def. 0)\n");
+  fprintf(stderr, "                     (in [0-1], a fraction of the overlap length;\n");
+  fprintf(stderr, "                     def. %.2f)\n", DEFMISM);
   fprintf(stderr, "  %s               Option to check for dovetailing of the reads (with\n", DOVEOPT);
   fprintf(stderr, "                     3' overhang(s))\n");
   fprintf(stderr, "  %s <int>        Minimum overlap of dovetailed reads (def. %s value)\n", DOVEOVER, OVERLAP);
@@ -47,7 +48,7 @@ void usage(void) {
   fprintf(stderr, "  %s               Option to produce shortest stitched read, given\n", MAXOPT);
   fprintf(stderr, "                     multiple overlapping possibilities (by default,\n");
   fprintf(stderr, "                     the longest stitched read is produced)\n");
-  fprintf(stderr, "  %s              Option to print counts of stitching results to stdout\n", VERBOSE);
+  fprintf(stderr, "  %s               Option to print counts of stitching results to stdout\n", VERBOSE);
   exit(-1);
 }
 

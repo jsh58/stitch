@@ -24,7 +24,7 @@
 #define DOVEFILE    "-dl"
 #define MAXOPT      "-n"
 #define ADAPTOPT    "-a"
-#define VERBOSE     "-ve"
+#define VERBOSE     "-v"
 
 // extensions for adapter-removal output files
 #define ONEEXT      "_1.fastq"
@@ -32,7 +32,7 @@
 
 // default parameter values
 #define DEFOVER     20    // min. overlap
-#define DEFMISM     0.0f  // mismatch fraction
+#define DEFMISM     0.1f  // mismatch fraction
 #define NA          "NA"  // n/a
 
 // third parameter to copyStr()
