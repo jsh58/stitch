@@ -48,7 +48,7 @@ void usage(void) {
   fprintf(stderr, "  %s               Option to produce shortest stitched read, given\n", MAXOPT);
   fprintf(stderr, "                     multiple overlapping possibilities (by default,\n");
   fprintf(stderr, "                     the longest stitched read is produced)\n");
-  fprintf(stderr, "  %s               Option to print counts of stitching results to stdout\n", VERBOSE);
+  fprintf(stderr, "  %s               Option to print counts of stitching results to stderr\n", VERBOSE);
   exit(-1);
 }
 
@@ -677,12 +677,12 @@ void getParams(int argc, char** argv) {
     maxLen, &stitch, &fail, gz);
 
   if (verbose) {
-    printf("Fragments (pairs of reads) analyzed: %d\n", count);
+    fprintf(stderr, "Fragments (pairs of reads) analyzed: %d\n", count);
     if (adaptOpt)
-      printf("  Adapters removed: %d\n", stitch);
+      fprintf(stderr, "  Adapters removed: %d\n", stitch);
     else {
-      printf("  Successfully stitched: %d\n", stitch);
-      printf("  Stitch failures: %d\n", fail);
+      fprintf(stderr, "  Successfully stitched: %d\n", stitch);
+      fprintf(stderr, "  Stitch failures: %d\n", fail);
     }
   }
 
