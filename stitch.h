@@ -5,7 +5,7 @@
   Header file for stitch.c.
 */
 
-#define MAX_SIZE    1024   // maximum length for input line
+#define MAX_SIZE    1024   // maximum length of input lines
 #define NOTMATCH    1.5f   // stitch failure
 #define GZEXT       ".gz"  // file extension for gzip compression
 
@@ -14,19 +14,18 @@
 #define FIRST       "-1"
 #define SECOND      "-2"
 #define OUTFILE     "-o"
-#define UNFILE1     "-u1"
-#define UNFILE2     "-u2"
+#define UNFILE      "-u"
 #define LOGFILE     "-l"
 #define OVERLAP     "-m"
 #define MISMATCH    "-p"
 #define DOVEOPT     "-d"
-#define DOVEOVER    "-dm"
-#define DOVEFILE    "-dl"
+#define DOVEOVER    "-e"
+#define DOVEFILE    "-f"
 #define MAXOPT      "-n"
 #define ADAPTOPT    "-a"
 #define VERBOSE     "-v"
 
-// extensions for adapter-removal output files
+// extensions for output files
 #define ONEEXT      "_1.fastq"
 #define TWOEXT      "_2.fastq"
 
