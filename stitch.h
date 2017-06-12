@@ -8,6 +8,7 @@
 #define MAX_SIZE    1024   // maximum length of input lines
 #define NOTMATCH    1.5f   // stitch failure
 #define GZEXT       ".gz"  // file extension for gzip compression
+#define COM         ", "   // separator for input file names
 
 // command-line parameters
 #define HELP        "-h"
@@ -31,6 +32,7 @@
 
 // default parameter values
 #define DEFOVER     20    // min. overlap
+#define DEFDOVE     50    // min. overlap for dovetailed reads
 #define DEFMISM     0.1f  // mismatch fraction
 #define NA          "NA"  // n/a
 
