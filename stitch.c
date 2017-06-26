@@ -1,6 +1,6 @@
 /*
   John M. Gaspar (jsh58@wildcats.unh.edu)
-  April 2015 (updated July 2016, Apr. 2017)
+  April 2015 (updated July 2016, Apr. 2017, June 2017)
 
   Analyzing paired-end reads for overlaps. Two modes:
   - 'stitch': producing a single, merged read for reads
@@ -14,6 +14,15 @@
 #include <string.h>
 #include <zlib.h>
 #include "stitch.h"
+
+/* void printVersion()
+ * Print version and copyright.
+ */
+void printVersion(void) {
+  fprintf(stderr, "stitch, version %s\n", VERSION);
+  fprintf(stderr, "Copyright (C) 2017 John M. Gaspar (jsh58@wildcats.unh.edu)\n");
+  exit(-1);
+}
 
 /* void usage()
  * Prints usage information.
@@ -604,8 +613,10 @@ void getParams(int argc, char** argv) {
 
   // parse argv
   for (int i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], HELP))
+    if (!strcmp(argv[i], HELP) || !strcmp(argv[i], HELP2))
       usage();
+    else if (!strcmp(argv[i], VERSOPT))
+      printVersion();
     else if (!strcmp(argv[i], MAXOPT))
       maxLen = 0;
     else if (!strcmp(argv[i], DOVEOPT))

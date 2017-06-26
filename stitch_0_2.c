@@ -1,16 +1,28 @@
 /*
   John M. Gaspar (jsh58@wildcats.unh.edu)
-  April 2015 (updated July 2016)
+  April 2015 (updated July 2016, Apr. 2017, June 2017)
 
-  Stitching paired-end reads together.
-  Version 0.1.
+  Analyzing paired-end reads for overlaps. Two modes:
+  - 'stitch': producing a single, merged read for reads
+     with sufficient overlaps
+  - 'adapter removal': removing adapters (3' overhangs
+     of stitched alignment) from individual reads
 */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
-#include "stitch_0_1.h"
+#include "stitch_0_2.h"
+
+/* void printVersion()
+ * Print version and copyright.
+ */
+void printVersion(void) {
+  fprintf(stderr, "stitch, version %s\n", VERSION);
+  fprintf(stderr, "Copyright (C) 2017 John M. Gaspar (jsh58@wildcats.unh.edu)\n");
+  exit(-1);
+}
 
 /* void usage()
  * Prints usage information.
@@ -21,28 +33,30 @@ void usage(void) {
   fprintf(stderr, "Required parameters:\n");
   fprintf(stderr, "  %s  <file>       Input FASTQ file with reads from forward direction\n", FIRST);
   fprintf(stderr, "  %s  <file>       Input FASTQ file with reads from reverse direction\n", SECOND);
-  fprintf(stderr, "  %s  <file>       Output FASTQ file for stitched reads\n", OUTFILE);
-  fprintf(stderr, "  Note: Both input files can be gzip compressed (with \"%s\"\n", GZEXT);
-  fprintf(stderr, "    extensions), in which case the output FASTQ file(s) will also\n");
-  fprintf(stderr, "    be gzip compressed.\n");
-  fprintf(stderr, "    Also, reads in both input files can be trimmed of poor quality\n");
-  fprintf(stderr, "    bases prior to using this program, but, since the stitched read\n");
-  fprintf(stderr, "    is defined by the 5' ends of the PE reads, one should be wary\n");
-  fprintf(stderr, "    of trimming them at that end.\n");
+  fprintf(stderr, "  %s  <file>       Output FASTQ file:\n", OUTFILE);
+  fprintf(stderr, "                   - in 'stitch' mode (def.), the file of merged reads\n");
+  fprintf(stderr, "                   - in 'adapter removal mode' (%s), the output files\n", ADAPTOPT);
+  fprintf(stderr, "                     will be <file>%s and <file>%s\n", ONEEXT, TWOEXT);
+  fprintf(stderr, "  Note: Multiple sets of input files can be specified, comma-separated.\n");
+  fprintf(stderr, "    Output FASTQ file(s) will be gzip compressed if input files are.\n");
   fprintf(stderr, "Optional parameters:\n");
+  fprintf(stderr, "  %s               Option to remove adapters and leave reads unstitched\n", ADAPTOPT);
+  fprintf(stderr, "                     (automatically sets %s option)\n", DOVEOPT);
   fprintf(stderr, "  %s  <file>       Log file for stitching results\n", LOGFILE);
-  fprintf(stderr, "  %s <file>       FASTQ file containing non-stitched forward reads\n", UNFILE1);
-  fprintf(stderr, "  %s <file>       FASTQ file containing non-stitched reverse reads\n", UNFILE2);
-  fprintf(stderr, "  %s  <int>        Minimum overlap of the paired-end reads (def. 20)\n", OVERLAP);
+  fprintf(stderr, "  %s  <file>       Non-stitched reads will be written as FASTQ files\n", UNFILE);
+  fprintf(stderr, "                     <file>%s and <file>%s\n", ONEEXT, TWOEXT);
+  fprintf(stderr, "  %s  <int>        Minimum overlap of the paired-end reads (def. %d)\n", OVERLAP, DEFOVER);
   fprintf(stderr, "  %s  <float>      Mismatches to allow in the overlapped region\n", MISMATCH);
-  fprintf(stderr, "                     (in [0-1), a fraction of the overlap length; def. 0)\n");
-  fprintf(stderr, "  %s               Option to check for dovetailing of the reads\n", DOVEOPT);
-  fprintf(stderr, "                     (min. overlap from %s still applies)\n", OVERLAP);
-  fprintf(stderr, "  %s <file>       Log file for dovetailed reads only\n", DOVEFILE);
+  fprintf(stderr, "                     (in [0-1], a fraction of the overlap length;\n");
+  fprintf(stderr, "                     def. %.2f)\n", DEFMISM);
+  fprintf(stderr, "  %s               Option to check for dovetailing of the reads (with\n", DOVEOPT);
+  fprintf(stderr, "                     3' overhang(s))\n");
+  fprintf(stderr, "  %s  <int>        Minimum overlap of dovetailed reads (def. %d)\n", DOVEOVER, DEFDOVE);
+  fprintf(stderr, "  %s  <file>       Log file for dovetailed reads only\n", DOVEFILE);
   fprintf(stderr, "  %s               Option to produce shortest stitched read, given\n", MAXOPT);
   fprintf(stderr, "                     multiple overlapping possibilities (by default,\n");
   fprintf(stderr, "                     the longest stitched read is produced)\n");
-  fprintf(stderr, "  %s              Option to print counts of stitching results to stdout\n", VERBOSE);
+  fprintf(stderr, "  %s               Option to print counts of results to stderr\n", VERBOSE);
   exit(-1);
 }
 
@@ -112,7 +126,12 @@ char rc(char in) {
   else if (in == 'C') out = 'G';
   else if (in == 'G') out = 'C';
   else if (in == 'N') out = 'N';
-  else exit(error("", ERRUNK));
+  else {
+    char msg[4] = "";
+    msg[0] = msg[2] = '\'';
+    msg[1] = in;
+    exit(error(msg, ERRUNK));
+  }
   return out;
 }
 
@@ -188,8 +207,8 @@ float compare(char* seq1, char* seq2, int length,
  */
 int findPos (char* seq1, char* seq2, char* qual1,
     char* qual2, int len1, int len2, int overlap,
-    int dovetail, float mismatch, int maxLen,
-    float* best) {
+    int dovetail, int doveOverlap, float mismatch,
+    int maxLen, float* best) {
   int pos = len1 - overlap + 1;  // position of match
   for (int i = len1 - overlap; i > -1; i--) {
     if (len1 - i > len2 && !dovetail)
@@ -206,9 +225,9 @@ int findPos (char* seq1, char* seq2, char* qual1,
 
   // check for dovetailing
   if (dovetail) {
-    for (int i = 1; i < len2 - overlap + 1; i++) {
+    for (int i = 1; i < len2 - doveOverlap + 1; i++) {
       float res = compare(seq1, seq2 + i,
-        len2-i < len1 ? len2-i : len1, mismatch, overlap);
+        len2-i < len1 ? len2-i : len1, mismatch, doveOverlap);
       if (res < *best || (res == *best && !maxLen)) {
         *best = res;
         pos = -i;
@@ -219,6 +238,111 @@ int findPos (char* seq1, char* seq2, char* qual1,
   }
 
   return pos;
+}
+
+/* void printDove()
+ * Log 3' overhangs of dovetailed reads.
+ */
+void printDove(File dove, char* header, char* seq1,
+    char* seq2, int len1, int len2, int pos) {
+  if (len1 > len2 + pos || pos < 0) {
+    fprintf(dove.f, "%s\t%s\t", header, len1 > len2 + pos ?
+      seq1 + len2 + pos : "-");
+    if (pos < 0)
+      for (int i = -1; i - pos > -1; i--)
+        fprintf(dove.f, "%c", rc(seq2[i - pos]));
+    else
+      fprintf(dove.f, "-");
+    fprintf(dove.f, "\n");
+  }
+}
+
+/* void printGZNoAdapt()
+ * Print the reads minus adapters (gzip output).
+ */
+void printGZNoAdapt(gzFile out1, gzFile out2,
+    char* head1, char* head2, char* seq1, char* seq2,
+    char* qual1, char* qual2, int end1, int end2,
+    int len) {
+
+  // print fwd read
+  gzprintf(out1, "@%s\n", head1);
+  for (int i = 0; i < end1; i++)
+    gzputc(out1, seq1[i]);
+  gzprintf(out1, "\n+\n");
+  for (int i = 0; i < end1; i++)
+    gzputc(out1, qual1[i]);
+  gzputc(out1, '\n');
+
+  // put rev read back
+  gzprintf(out2, "@%s\n", head2);
+  for (int i = len - 1; i > end2 - 1; i--)
+    gzputc(out2, rc(seq2[i]));
+  gzprintf(out2, "\n+\n");
+  for (int i = len - 1; i > end2 - 1; i--)
+    gzputc(out2, qual2[i]);
+  gzputc(out2, '\n');
+}
+
+/* void printNoAdapt()
+ * Print the reads minus adapters.
+ */
+void printNoAdapt(FILE* out1, FILE* out2, char* head1,
+    char* head2, char* seq1, char* seq2, char* qual1,
+    char* qual2, int end1, int end2, int len) {
+
+  // print fwd read
+  fprintf(out1, "@%s\n", head1);
+  for (int i = 0; i < end1; i++)
+    putc(seq1[i], out1);
+  fprintf(out1, "\n+\n");
+  for (int i = 0; i < end1; i++)
+    putc(qual1[i], out1);
+  putc('\n', out1);
+
+  // put rev read back
+  fprintf(out2, "@%s\n", head2);
+  for (int i = len - 1; i > end2 - 1; i--)
+    putc(rc(seq2[i]), out2);
+  fprintf(out2, "\n+\n");
+  for (int i = len - 1; i > end2 - 1; i--)
+    putc(qual2[i], out2);
+  putc('\n', out2);
+}
+
+/* int printResAdapt()
+ * Control printing of reads minus adapters.
+ *   Return 1 if adapter found, else 0.
+ */
+int printResAdapt(File out1, File out2, File dove,
+    int doveOpt, char* header, char* head1, char* head2,
+    char* seq1, char* seq2, char* qual1, char* qual2,
+    int len1, int len2, int pos, float best, int gz) {
+
+  int adapter = 0;
+  int end1 = len1;
+  int end2 = 0;
+
+  // if found, identify locations of adapters
+  if (len1 > len2 + pos || pos < 0) {
+    adapter = 1;
+    if (len1 > len2 + pos)
+      end1 = len2 + pos;
+    if (pos < 0)
+      end2 = -pos;
+    if (doveOpt)
+      printDove(dove, header, seq1, seq2, len1, len2, pos);
+  }
+
+  // print output
+  if (gz)
+    printGZNoAdapt(out1.gzf, out2.gzf, head1, head2,
+      seq1, seq2, qual1, qual2, end1, end2, len2);
+  else
+    printNoAdapt(out1.f, out2.f, head1, head2,
+      seq1, seq2, qual1, qual2, end1, end2, len2);
+
+  return adapter;
 }
 
 /* void createSeq()
@@ -259,18 +383,8 @@ void printRes(File out, File log, int logOpt, File dove,
     best ? fprintf(log.f, "%.3f", best) : fprintf(log.f, "0");
     fprintf(log.f, "\n");
   }
-
-  // log 3' overhangs of dovetailed sequence(s)
-  if (doveOpt && (len1 > len2 + pos || pos < 0)) {
-    fprintf(dove.f, "%s\t%s\t", header, len1 > len2 + pos ?
-      seq1 + len2 + pos : "-");
-    if (pos < 0)
-      for (int i = -1; i - pos > -1; i--)
-        fprintf(dove.f, "%c", rc(seq2[i - pos]));
-    else
-      fprintf(dove.f, "-");
-    fprintf(dove.f, "\n");
-  }
+  if (doveOpt)
+    printDove(dove, header, seq1, seq2, len1, len2, pos);
 
   // print stitched sequence
   createSeq(seq1, seq2, qual1, qual2, len1, len2, pos);
@@ -286,7 +400,7 @@ void printFail(File un1, File un2, int unOpt,
     char* head2, char* seq1, char* seq2, char* qual1,
     char* qual2, int len, int gz) {
   if (logOpt)
-    fprintf(log.f, "%s\tn/a\n", header);
+    fprintf(log.f, "%s\t%s\n", header, NA);
   if (unOpt) {
     gz ? gzprintf(un1.gzf, "@%s\n%s\n+\n%s\n", head1, seq1, qual1)
       : fprintf(un1.f, "@%s\n%s\n+\n%s\n", head1, seq1, qual1);
@@ -305,11 +419,11 @@ void printFail(File un1, File un2, int unOpt,
 /* int readFile()
  * Parses the input file. Produces the output file(s).
  */
-int readFile(File in1, File in2, File out,
+int readFile(File in1, File in2, File out, File out2,
     File un1, File un2, int unOpt, File log,
-    int logOpt, int overlap, int dovetail, File dove,
-    int doveOpt, float mismatch, int maxLen, int* stitch,
-    int* fail, int gz) {
+    int logOpt, int overlap, int dovetail, int doveOverlap,
+    File dove, int doveOpt, int adaptOpt, float mismatch,
+    int maxLen, int* stitch, int* fail, int gz) {
 
   char* line = (char*) memalloc(MAX_SIZE);
   char* head1 = (char*) memalloc(MAX_SIZE);
@@ -360,15 +474,27 @@ int readFile(File in1, File in2, File out,
     // stitch reads, print result
     float best = 1.0f;
     int pos = findPos(seq1, seq2, qual1, qual2, len1, len2,
-      overlap, dovetail, mismatch, maxLen, &best);
+      overlap, dovetail, doveOverlap, mismatch, maxLen, &best);
     if (pos == len1 - overlap + 1) {
-      printFail(un1, un2, unOpt, log, logOpt, header, head1,
-        head2, seq1, seq2, qual1, qual2, len2, gz);
-      (*fail)++;
+      if (adaptOpt) {
+        printFail(out, out2, 1, log, 0, header, head1,
+          head2, seq1, seq2, qual1, qual2, len2, gz);
+        (*fail)++;
+      } else {
+        printFail(un1, un2, unOpt, log, logOpt, header, head1,
+          head2, seq1, seq2, qual1, qual2, len2, gz);
+        (*fail)++;
+      }
     } else {
-      printRes(out, log, logOpt, dove, doveOpt, header, seq1,
-        seq2, qual1, qual2, len1, len2, pos, best, gz);
-      (*stitch)++;
+      if (adaptOpt) {
+        (*stitch) += printResAdapt(out, out2, dove, doveOpt,
+          header, head1, head2, seq1, seq2, qual1, qual2,
+          len1, len2, pos, best, gz);
+      } else {
+        printRes(out, log, logOpt, dove, doveOpt, header, seq1,
+          seq2, qual1, qual2, len1, len2, pos, best, gz);
+        (*stitch)++;
+      }
     }
   }
 
@@ -427,26 +553,46 @@ void openRead(char* inFile, File* in, int gz) {
 /* void openFiles()
  * Opens the files to run the program.
  */
-void openFiles(char* outFile, File* out,
-    char* inFile1, File* in1, char* inFile2,
-    File* in2, char* unFile1, File* un1,
-    char* unFile2, File* un2, char* logFile,
-    File* log, char* doveFile, File* dove,
-    int dovetail, int gz) {
-  // open required files
-  openRead(inFile1, in1, gz);
-  openRead(inFile2, in2, gz);
-  openWrite(outFile, out, gz);
+void openFiles(char* outFile, File* out, File* out2,
+    char* unFile, File* un1, File* un2,
+    char* logFile, File* log,
+    char* doveFile, File* dove,
+    int dovetail, int adaptOpt, int gz) {
 
-  // open optional files
-  if (unFile1 != NULL && unFile2 != NULL) {
-    openWrite(unFile1, un1, gz);
-    openWrite(unFile2, un2, gz);
+  if (adaptOpt) {
+    int add = strlen(ONEEXT) > strlen(TWOEXT) ?
+      strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
+    char* outFile2 = memalloc(strlen(outFile) + add);
+    strcpy(outFile2, outFile);
+    strcat(outFile2, ONEEXT);
+    openWrite(outFile2, out, gz);
+    strcpy(outFile2, outFile);
+    strcat(outFile2, TWOEXT);
+    openWrite(outFile2, out2, gz);
+    free(outFile2);
+
+  } else {
+    openWrite(outFile, out, gz);
+
+    // open optional files
+    if (unFile != NULL) {
+      int add = strlen(ONEEXT) > strlen(TWOEXT) ?
+        strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
+      char* unFile2 = memalloc(strlen(unFile) + add);
+      strcpy(unFile2, unFile);
+      strcat(unFile2, ONEEXT);
+      openWrite(unFile2, un1, gz);
+      strcpy(unFile2, unFile);
+      strcat(unFile2, TWOEXT);
+      openWrite(unFile2, un2, gz);
+      free(unFile2);
+    }
+    if (logFile != NULL) {
+      openWrite(logFile, log, 0);
+      fprintf(log->f, "Read\tOverlapLen\tStitchedLen\tMismatch\n");
+    }
   }
-  if (logFile != NULL) {
-    openWrite(logFile, log, 0);
-    fprintf(log->f, "Read\tOverlapLen\tStitchedLen\tMismatch\n");
-  }
+
   if (dovetail && doveFile != NULL) {
     openWrite(doveFile, dove, 0);
     fprintf(dove->f, "Read\tDovetailFwd\tDovetailRev\n");
@@ -459,20 +605,24 @@ void openFiles(char* outFile, File* out,
 void getParams(int argc, char** argv) {
 
   char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
-    *unFile1 = NULL, *unFile2 = NULL, *logFile = NULL,
-    *doveFile = NULL;
-  int overlap = DEFOVER, dovetail = 0, maxLen = 1;
+    *unFile = NULL, *logFile = NULL, *doveFile = NULL;
+  int overlap = DEFOVER, dovetail = 0, doveOverlap = DEFDOVE,
+    adaptOpt = 0, maxLen = 1;
   int verbose = 0;
   float mismatch = DEFMISM;
 
   // parse argv
   for (int i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], HELP))
+    if (!strcmp(argv[i], HELP) || !strcmp(argv[i], HELP2))
       usage();
+    else if (!strcmp(argv[i], VERSOPT))
+      printVersion();
     else if (!strcmp(argv[i], MAXOPT))
       maxLen = 0;
     else if (!strcmp(argv[i], DOVEOPT))
       dovetail = 1;
+    else if (!strcmp(argv[i], ADAPTOPT))
+      adaptOpt = 1;
     else if (!strcmp(argv[i], VERBOSE))
       verbose = 1;
     else if (i < argc - 1) {
@@ -482,16 +632,16 @@ void getParams(int argc, char** argv) {
         inFile1 = argv[++i];
       else if (!strcmp(argv[i], SECOND))
         inFile2 = argv[++i];
-      else if (!strcmp(argv[i], UNFILE1))
-        unFile1 = argv[++i];
-      else if (!strcmp(argv[i], UNFILE2))
-        unFile2 = argv[++i];
+      else if (!strcmp(argv[i], UNFILE))
+        unFile = argv[++i];
       else if (!strcmp(argv[i], LOGFILE))
         logFile = argv[++i];
       else if (!strcmp(argv[i], DOVEFILE))
         doveFile = argv[++i];
       else if (!strcmp(argv[i], OVERLAP))
         overlap = getInt(argv[++i]);
+      else if (!strcmp(argv[i], DOVEOVER))
+        doveOverlap = getInt(argv[++i]);
       else if (!strcmp(argv[i], MISMATCH))
         mismatch = getFloat(argv[++i]);
       else
@@ -503,44 +653,100 @@ void getParams(int argc, char** argv) {
   // check for parameter errors
   if (outFile == NULL || inFile1 == NULL || inFile2 == NULL)
     usage();
-  if (overlap <= 0)
+  if (overlap <= 0 || doveOverlap <= 0)
     exit(error("", ERROVER));
   if (mismatch < 0.0f || mismatch >= 1.0f)
     exit(error("", ERRMISM));
 
+  // adjust parameters
+  if (adaptOpt) {
+    dovetail = 1;
+    unFile = logFile = NULL;
+  }
+
+  // get first set of file names
+  char* end1, *end2;
+  char* file1 = strtok_r(inFile1, COM, &end1);
+  char* file2 = strtok_r(inFile2, COM, &end2);
+
   // determine if inputs are gzip compressed
   int gz = 0;
-  if (!strcmp(inFile1 + strlen(inFile1) - strlen(GZEXT), GZEXT) &&
-      !strcmp(inFile2 + strlen(inFile2) - strlen(GZEXT), GZEXT) )
+  if (!strcmp(file1 + strlen(file1) - strlen(GZEXT), GZEXT) &&
+      !strcmp(file2 + strlen(file2) - strlen(GZEXT), GZEXT) )
     gz = 1;
 
-  // open files
-  File out, in1, in2, un1, un2, log, dove;
-  openFiles(outFile, &out, inFile1, &in1, inFile2, &in2,
-    unFile1, &un1, unFile2, &un2, logFile, &log,
-    doveFile, &dove, dovetail, gz);
+  // open output files
+  File out, out2, un1, un2, log, dove;
+  openFiles(outFile, &out, &out2,
+    unFile, &un1, &un2, logFile, &log,
+    doveFile, &dove, dovetail, adaptOpt, gz);
 
-  // read file
-  int stitch = 0, fail = 0;  // counting variables
-  int count = readFile(in1, in2, out, un1, un2,
-    unFile1 != NULL && unFile2 != NULL, log, logFile != NULL,
-    overlap, dovetail, dove, dovetail && doveFile != NULL,
-    mismatch, maxLen, &stitch, &fail, gz);
+  // loop through input files
+  int i = 0;  // number of files processed
+  int tCount = 0, tStitch = 0, tFail = 0;  // counting variables
+  while (file1 && file2) {
 
-  if (verbose) {
-    printf("Reads analyzed: %d\n", count);
-    printf("  Successfully stitched: %d\n", stitch);
-    printf("  Stitch failures: %d\n", fail);
+    if (verbose) {
+      fprintf(stderr, "Processing files: %s,%s\n", file1, file2);
+    }
+
+    // open files
+    File in1, in2;
+    openRead(file1, &in1, gz);
+    openRead(file2, &in2, gz);
+
+    // process files
+    int stitch = 0, fail = 0;  // counting variables
+    int count = readFile(in1, in2, out, out2, un1, un2,
+      unFile != NULL, log, logFile != NULL,
+      overlap, dovetail, doveOverlap, dove,
+      dovetail && doveFile != NULL, adaptOpt, mismatch,
+      maxLen, &stitch, &fail, gz);
+    tCount += count;
+    tStitch += stitch;
+    tFail += fail;
+
+    // log counts
+    if (verbose) {
+      fprintf(stderr, "  Fragments (pairs of reads) analyzed: %d\n", count);
+      if (adaptOpt)
+        fprintf(stderr, "    Adapters removed: %d\n", stitch);
+      else {
+        fprintf(stderr, "    Successfully stitched: %d\n", stitch);
+        fprintf(stderr, "    Stitch failures: %d\n", fail);
+      }
+    }
+
+    // close files
+    if ( ( gz && ( gzclose(in1.gzf) != Z_OK ||
+        gzclose(in2.gzf) != Z_OK ) ) ||
+        ( ! gz && ( fclose(in1.f) || fclose(in2.f) ) ) )
+      exit(error("", ERRCLOSE));
+
+    file1 = strtok_r(NULL, COM, &end1);
+    file2 = strtok_r(NULL, COM, &end2);
+    i++;
+  }
+
+  if (verbose && i > 1) {
+    fprintf(stderr, "Total counts\n");
+    fprintf(stderr, "  Fragments (pairs of reads) analyzed: %d\n", tCount);
+    if (adaptOpt)
+      fprintf(stderr, "    Adapters removed: %d\n", tStitch);
+    else {
+      fprintf(stderr, "    Successfully stitched: %d\n", tStitch);
+      fprintf(stderr, "    Stitch failures: %d\n", tFail);
+    }
   }
 
   // close files
-  if ( ( gz && ( gzclose(in1.gzf) != Z_OK ||
-      gzclose(in2.gzf) != Z_OK || gzclose(out.gzf) != Z_OK ||
-      (unFile1 != NULL && unFile2 != NULL &&
-      (gzclose(un1.gzf) != Z_OK || gzclose(un2.gzf) != Z_OK) ) ) ) ||
-      ( ! gz && ( fclose(in1.f) || fclose(in2.f) || fclose(out.f) ||
-      (unFile1 != NULL && unFile2 != NULL &&
-      (fclose(un1.f) || fclose(un2.f)) ) ) ) ||
+  if ( ( gz && ( gzclose(out.gzf) != Z_OK ||
+      (adaptOpt && gzclose(out2.gzf) != Z_OK) ||
+      (unFile != NULL && (gzclose(un1.gzf) != Z_OK ||
+      gzclose(un2.gzf) != Z_OK) ) ) ) ||
+      ( ! gz && ( fclose(out.f) ||
+      (adaptOpt && fclose(out2.f)) ||
+      (unFile != NULL && (fclose(un1.f) || fclose(un2.f)) ) ) ) ||
       (logFile != NULL && fclose(log.f)) ||
       (dovetail && doveFile != NULL && fclose(dove.f)) )
     exit(error("", ERRCLOSE));
