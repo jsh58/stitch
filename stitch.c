@@ -277,15 +277,16 @@ int findPos (char* seq1, char* seq2, char* qual1,
     char* qual2, int len1, int len2, int overlap,
     int dovetail, int doveOverlap, float mismatch,
     int maxLen, float* best) {
+
+  // check for regular (non-dovetailed) alignments
   int pos = len1 - overlap + 1;  // position of match
   int i = len1 - overlap;
   for ( ; i > -1 && len1 - i <= len2; i--) {
+    // align sequences
     float res = compare(seq1 + i, seq2, len1 - i,
       mismatch, overlap);
-printf("%s\n", seq1);
-for (int j = 0; j < i; j++) printf(" ");
-printf("%s  len=%d, res=%.2f\n", seq2, len1-i, res);
-while(!getchar()) ;
+
+    // compare result
     if (res < *best || (res == *best && !maxLen)) {
       *best = res;
       pos = i;
@@ -297,6 +298,10 @@ while(!getchar()) ;
   // check for dovetailing
   if (dovetail) {
 
+    // if no regular alignment, reset i
+    if (i == len1 - overlap)
+      i = (len1 > len2 ? len1 - len2 - 1 : -1);
+
     // continue decrementing i
     for ( ; ; i--) {
       float res = NOTMATCH;
@@ -306,10 +311,6 @@ while(!getchar()) ;
           break;
         res = compare(seq1 + i, seq2, len2,
           mismatch, doveOverlap);
-printf("%s  *dove1\n", seq1);
-for (int j = 0; j < i; j++) printf(" ");
-printf("%s  len=%d, res=%.2f\n", seq2, len2, res);
-while(!getchar()) ;
 
       } else if (len1 < len2 + i) {
         // read2 has 3' overhang, read1 determines overlap
@@ -317,10 +318,6 @@ while(!getchar()) ;
           break;
         res = compare(seq1, seq2 - i, len1,
           mismatch, doveOverlap);
-for (int j = 0; j < -i; j++) printf(" ");
-printf("%s  *dove2\n", seq1);
-printf("%s  len=%d, res=%.2f\n", seq2, len1, res);
-while(!getchar()) ;
 
       } else {
         // read2 has 3' overhang and determines overlap
@@ -328,11 +325,6 @@ while(!getchar()) ;
           break;
         res = compare(seq1, seq2 - i, len2 + i,
           mismatch, doveOverlap);
-for (int j = 0; j < -i; j++) printf(" ");
-printf("%s  *dove3\n", seq1);
-printf("%s  len=%d, res=%.2f\n", seq2, len2+i, res);
-while(!getchar()) ;
-
       }
 
       // compare result
@@ -344,52 +336,6 @@ while(!getchar()) ;
         return pos;  // shortcut for exact match
     }
   }
-/*
-    for ( ; i > 0 ? len2 >= doveOverlap : (len1 < len2-i ? ; i--) {
-    // continue decrementing i if seq1 longer than seq2
-    if (len1 > len2 && len2 >= doveOverlap) {
-      for ( ; i > -1; i--) {
-        float res = compare(seq1 + i, seq2,
-          len1-i < len2 ? len1-i : len2, mismatch, doveOverlap);
-        if (res < *best || (res == *best && !maxLen)) {
-          *best = res;
-          pos = -i;
-        }
-        if (res == 0.0f && maxLen)
-          return pos;  // shortcut for exact match
-      }
-    } else i = 1;
-
-    // now reads are aligned at 5' end...
-    // check if seq2 longer than seq1
-    if (len1 < doveOverlap)
-      return pos;  // shortcut -- no chance of further match
-
-    if (len1 >= doveOverlap) {
-      for (i = 1; i < len2 - len1 + 1; i++) {
-        float res = compare(seq1, seq2 + i,
-          len2-i < len1 ? len2-i : len1, mismatch, doveOverlap);
-        if (res < *best || (res == *best && !maxLen)) {
-          *best = res;
-          pos = -i;
-        }
-        if (res == 0.0f && maxLen)
-          return pos;  // shortcut for exact match
-      }
-    }
-
-    for ( ; len2 - i >= doveOverlap; i++) {
-      float res = compare(seq1, seq2 + i,
-        len2-i < len1 ? len2-i : len1, mismatch, doveOverlap);
-      if (res < *best || (res == *best && !maxLen)) {
-        *best = res;
-        pos = -i;
-      }
-      if (res == 0.0f && maxLen)
-        return pos;  // shortcut for exact match
-    }
-  }
-*/
 
   return pos;
 }
