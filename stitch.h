@@ -1,15 +1,27 @@
 /*
   John M. Gaspar (jsh58@wildcats.unh.edu)
-  April 2015 (updated July 2016, Apr. 2017)
+  April 2015 (updated July 2016, Apr. 2017, June 2017)
 
   Header file for stitch.c.
 */
-#define VERSION     "0.2"
+#define VERSION     "0.3"
 
-#define MAX_SIZE    1024   // maximum length of input lines
-#define NOTMATCH    1.5f   // stitch failure
-#define GZEXT       ".gz"  // file extension for gzip compression
-#define COM         ", "   // separator for input file names
+// fastq parts
+#define FASTQ       4       // lines per fastq read
+#define HEAD        0       //   |
+#define SEQ         1       //   | parts of a fastq read
+#define PLUS        2       //   |
+#define QUAL        3       //   |
+#define BEGIN       '@'     // beginning of header line
+#define PLUSCHAR    '+'     // beginning of 3rd line
+#define EXTRA       2       // save 2 extra strings for 2nd read:
+                            //   revComp(seq) and rev(qual)
+
+// constants
+#define MAX_SIZE    1024    // maximum length of input lines
+#define NOTMATCH    1.5f    // stitch failure
+#define GZEXT       ".gz"   // file extension for gzip compression
+#define COM         ", "    // separator for input file names
 
 // command-line parameters
 #define HELP        "-h"
@@ -39,11 +51,6 @@
 #define DEFMISM     0.1f  // mismatch fraction
 #define NA          "NA"  // n/a
 
-// third parameter to copyStr()
-#define FWD         0
-#define RC          1
-#define REV         2
-
 // error messages
 #define ERROPEN     0
 #define MERROPEN    ": cannot open file for reading"
@@ -71,6 +78,8 @@
 #define MERROVER    "Overlap must be greater than 0"
 #define ERRMISM     12
 #define MERRMISM    "Mismatch must be in [0,1)"
+#define ERRFASTQ    13
+#define MERRFASTQ   "Input file does not follow fastq format"
 #define DEFERR      "Unknown error"
 
 typedef union file {
