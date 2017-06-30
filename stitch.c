@@ -158,6 +158,9 @@ void checkHeaders(char* head1, char* head2, char* header) {
     if (head1[j] != head2[j]) {
       if (ok)
         break;
+      for ( ; head1[j] != '\n' && head1[j] != '\0'
+        && head1[j] != ' '; j++) ;
+      head1[j] = '\0';  // trim head1 for err msg
       exit(error(head1, ERRHEAD));
     } else if (head1[j] == ' ')
       ok = 1;  // headers match
@@ -203,8 +206,8 @@ void processSeq(char** read, int* len, int i, int j) {
 }
 
 /* int loadReads()
- * Load a pair of reads. Determine consensus header.
- *   Return 0 on EOF.
+ * Load a pair of reads. Check formatting, determine
+ *   consensus header. Return 0 on EOF.
  */
 int loadReads(File in1, File in2, char** read1, char** read2,
     char* header, int* len1, int* len2, int gz) {
@@ -232,7 +235,7 @@ int loadReads(File in1, File in2, char** read1, char** read2,
           exit(error("", ERRSEQ));
       }
 
-      // process sequence/quality
+      // process sequence/quality lines
       if (j == SEQ || j == QUAL)
         processSeq(read, len, i, j);
     }
@@ -249,7 +252,7 @@ int loadReads(File in1, File in2, char** read1, char** read2,
 }
 
 /* float compare()
- * Compare two sequences. Return the percent mismatch.
+ * Compare two sequences. Return the fraction mismatch.
  */
 float compare(char* seq1, char* seq2, int length,
     float mismatch, int overlap) {
