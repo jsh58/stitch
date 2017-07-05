@@ -38,6 +38,7 @@
 #define DOVEFILE    "-f"
 #define MAXOPT      "-n"
 #define ADAPTOPT    "-a"
+#define ALNFILE     "-j"
 #define VERBOSE     "-v"
 #define VERSOPT     "--version"
 
