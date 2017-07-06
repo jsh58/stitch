@@ -5,7 +5,7 @@
   Analyzing paired-end reads for overlaps. Two modes:
   - 'stitch': producing a single, merged read for reads
      with sufficient overlaps
-  - 'adapter removal': removing adapters (3' overhangs
+  - 'adapter-removal': removing adapters (3' overhangs
      of stitched alignment) from individual reads
 */
 
@@ -34,31 +34,28 @@ void usage(void) {
   fprintf(stderr, "  %s  <file>       Input FASTQ file with reads from forward direction\n", FIRST);
   fprintf(stderr, "  %s  <file>       Input FASTQ file with reads from reverse direction\n", SECOND);
   fprintf(stderr, "                     (do not set if '%s' file has interleaved reads)\n", FIRST);
-  fprintf(stderr, "  %s  <file>       Output FASTQ file:\n", OUTFILE);
+  fprintf(stderr, "  %s  <file>       Output FASTQ file(s):\n", OUTFILE);
   fprintf(stderr, "                   - in 'stitch' mode (def.), the file of merged reads\n");
-  fprintf(stderr, "                   - in 'adapter removal mode' (%s), the output files\n", ADAPTOPT);
+  fprintf(stderr, "                   - in 'adapter-removal' mode (%s), the output files\n", ADAPTOPT);
   fprintf(stderr, "                     will be <file>%s and <file>%s\n", ONEEXT, TWOEXT);
   fprintf(stderr, "  Note: Multiple sets of input files can be specified, comma-separated.\n");
   fprintf(stderr, "    Output FASTQ file(s) will be gzip compressed if input files are.\n");
   fprintf(stderr, "Alignment parameters:\n");
   fprintf(stderr, "  %s  <int>        Minimum overlap of the paired-end reads (def. %d)\n", OVERLAP, DEFOVER);
   fprintf(stderr, "  %s  <float>      Mismatches to allow in the overlapped region\n", MISMATCH);
-  fprintf(stderr, "                     (in [0-1], a fraction of the overlap length;\n");
-  fprintf(stderr, "                     def. %.2f)\n", DEFMISM);
-  fprintf(stderr, "  %s               'Adapter removal mode': remove adapters and leave\n", ADAPTOPT);
-  fprintf(stderr, "                     reads unstitched (automatically sets %s option)\n", DOVEOPT);
-  fprintf(stderr, "  %s               Option to check for dovetailing of the reads (with\n", DOVEOPT);
-  fprintf(stderr, "                     3' overhang(s))\n");
+  fprintf(stderr, "                     (a fraction of the overlap length; def. %.2f)\n", DEFMISM);
+  fprintf(stderr, "  %s               Use 'adapter-removal' mode (also sets %s option)\n", ADAPTOPT, DOVEOPT);
+  fprintf(stderr, "  %s               Option to check for dovetailing (with 3' overhangs)\n", DOVEOPT);
   fprintf(stderr, "  %s  <int>        Minimum overlap of dovetailed reads (def. %d)\n", DOVEOVER, DEFDOVE);
   fprintf(stderr, "  %s               Option to produce shortest stitched read of\n", MAXOPT);
   fprintf(stderr, "                     multiple possibilities (def. longest read)\n");
   fprintf(stderr, "I/O options:\n");
-  fprintf(stderr, "  %s  <file>       Log file for stitching results (lengths)\n", LOGFILE);
-  fprintf(stderr, "  %s  <file>       Log file for stitching results (alignments)\n", ALNFILE);
+  fprintf(stderr, "  %s  <file>       Log file for stitching results of each read\n", LOGFILE);
+  fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  %s  <file>       FASTQ files for reads that failed stitching\n", UNFILE);
-  fprintf(stderr, "                     (written as <file>%s and <file>%s)\n", ONEEXT, TWOEXT);
+  fprintf(stderr, "                     (output as <file>%s and <file>%s)\n", ONEEXT, TWOEXT);
   fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (3' overhang(s))\n", DOVEFILE);
-  fprintf(stderr, "  %s               Option to print status updates to stderr\n", VERBOSE);
+  fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
 }
 
@@ -449,33 +446,40 @@ void printAln(File aln, char* header, char** read1,
 
   // print sequence alignment
   for (int i = 0; i > pos; i--)
-    fprintf(aln.f, " ");
-  fprintf(aln.f, "%s  R1\n", read1[SEQ]);
-/*  // print '|' for matches
+    putc(' ', aln.f);
+  fprintf(aln.f, "%s\n", read1[SEQ]);
+
+  // print '|' for matches, ':' for Ns
+  int i;
+  for (i = 0; i < abs(pos); i++)
+    putc(' ', aln.f);
+  int j = 0;
   if (pos < 0) {
-    int i;
-    for (i = 0; i < -pos; i++)
-      fprintf(aln.f, " ");
-    int end = (pos + len2 > len1 ? len1 : pos + len2);
-    for (int j = 0 ; j < end; j++)
-      putc(read1[SEQ][j] != read2[SEQ + EXTRA + 1][i]
-        || j < pos ? ' ': '|', aln.f);
-  }*/
+    j = -pos;
+    i = 0;
+  }
+  while (i < len1 && j < len2) {
+    putc((read1[SEQ][i] == 'N' || read2[SEQ + EXTRA + 1][j] == 'N') ?
+      ':' : (read1[SEQ][i] == read2[SEQ + EXTRA + 1][j] ?
+      '|' : ' '), aln.f);
+    i++;
+    j++;
+  }
+  putc('\n', aln.f);
+
   for (int i = 0; i < pos; i++)
-    fprintf(aln.f, " ");
-  fprintf(aln.f, "%s  R2rc\n", read2[SEQ + EXTRA + 1]);
-  fprintf(aln.f, "\n");
+    putc(' ', aln.f);
+  fprintf(aln.f, "%s\n\n", read2[SEQ + EXTRA + 1]);
 
   // print quality scores
   for (int i = 0; i > pos; i--)
-    fprintf(aln.f, " ");
-  fprintf(aln.f, "%s  R1\n", read1[QUAL]);
+    putc(' ', aln.f);
+  fprintf(aln.f, "%s\n", read1[QUAL]);
   for (int i = 0; i < pos; i++)
-    fprintf(aln.f, " ");
-  fprintf(aln.f, "%s  R2rev\n", read2[QUAL + EXTRA]);
-
+    putc(' ', aln.f);
+  fprintf(aln.f, "%s\n", read2[QUAL + EXTRA]);
+  putc('\n', aln.f);
 }
-
 
 /* void createSeq()
  * Create stitched sequence (into seq1, qual1).
@@ -529,6 +533,16 @@ void printRes(File out, File log, int logOpt, File dove,
   else
     fprintf(out.f, "%s\n%s\n+\n%s\n", header,
       read1[SEQ], read1[QUAL]);
+
+  // print to alignment output too
+  if (alnOpt) {
+    for (int i = 0; i > pos; i--)
+      putc(' ', aln.f);
+    fprintf(aln.f, "%s\n", read1[SEQ]);
+    for (int i = 0; i > pos; i--)
+      putc(' ', aln.f);
+    fprintf(aln.f, "%s\n\n", read1[QUAL]);
+  }
 }
 
 /* void printFail()
@@ -784,7 +798,7 @@ void getParams(int argc, char** argv) {
   if (mismatch < 0.0f || mismatch >= 1.0f)
     exit(error("", ERRMISM));
 
-  // adjust parameters
+  // adjust parameters for adapter-removal mode
   if (adaptOpt) {
     dovetail = 1;
     unFile = logFile = alnFile = NULL;
@@ -850,7 +864,7 @@ void getParams(int argc, char** argv) {
     // close files
     if ( ( gz && ( gzclose(in1.gzf) != Z_OK ||
         (! inter && gzclose(in2.gzf) != Z_OK ) ) ) ||
-        ( ! gz && ( fclose(in1.f) || (! inter && fclose(in2.f) ) ) ) )
+        ( ! gz && ( fclose(in1.f) || (! inter && fclose(in2.f)) ) ) )
       exit(error("", ERRCLOSE));
 
     file1 = strtok_r(NULL, COM, &end1);
@@ -880,7 +894,8 @@ void getParams(int argc, char** argv) {
       (adaptOpt && fclose(out2.f)) ||
       (unFile != NULL && (fclose(un1.f) || fclose(un2.f)) ) ) ) ||
       (logFile != NULL && fclose(log.f)) ||
-      (dovetail && doveFile != NULL && fclose(dove.f)) )
+      (dovetail && doveFile != NULL && fclose(dove.f)) ||
+      (alnFile != NULL && fclose(aln.f)) )
     exit(error("", ERRCLOSE));
 }
 
