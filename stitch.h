@@ -4,7 +4,7 @@
 
   Header file for stitch.c.
 */
-#define VERSION     "0.3"
+#define VERSION     "0.4"
 
 // fastq parts
 #define FASTQ       4       // lines per fastq read
@@ -39,6 +39,7 @@
 #define MAXOPT      "-n"
 #define ADAPTOPT    "-a"
 #define ALNFILE     "-j"
+#define GZOPT       "-g"
 #define VERBOSE     "-v"
 #define VERSOPT     "--version"
 
