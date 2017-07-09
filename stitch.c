@@ -47,10 +47,11 @@ void usage(void) {
   fprintf(stderr, "  %s               Option to produce shortest stitched read\n", MAXOPT);
   fprintf(stderr, "I/O options:\n");
   fprintf(stderr, "  %s  <file>       Log file for stitching results of each read\n", LOGFILE);
-  fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  %s  <file>       FASTQ files for reads that failed stitching\n", UNFILE);
   fprintf(stderr, "                     (output as <file>%s and <file>%s)\n", ONEEXT, TWOEXT);
   fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (3' overhang(s))\n", DOVEFILE);
+  fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
+  fprintf(stderr, "  %s               Option to print mismatches only to %s log file\n", DIFFOPT, ALNFILE);
   fprintf(stderr, "  %s               Option to gzip-compress FASTQ output files\n", GZOPT);
   fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
@@ -441,6 +442,28 @@ int printResAdapt(File out1, File out2, File dove,
   return adapter;
 }
 
+/* void printAln2()
+ * Printing details of stitch mismatches.
+ */
+void printAln2(File aln, char* header, char** read1,
+    char** read2, int len1, int len2, int pos) {
+  int i = pos;
+  int j = 0;
+  if (pos < 0) {
+    j = -pos;
+    i = 0;
+  }
+  while (i < len1 && j < len2) {
+    if (read1[SEQ][i] == 'N' || read2[SEQ + EXTRA + 1][j] == 'N'
+        || read1[SEQ][i] != read2[SEQ + EXTRA + 1][j])
+      fprintf(aln.f, "%s\t%d\t%c\t%c\t%c\t%c\n",
+        header + 1, i, read1[SEQ][i], read1[QUAL][i],
+        read2[SEQ + EXTRA + 1][j], read2[QUAL + EXTRA][j]);
+    i++;
+    j++;
+  }
+}
+
 /* void printAln()
  * Print nicely formatted alignment of stitched reads.
  */
@@ -525,8 +548,10 @@ void printRes(File out, File log, int logOpt, File dove,
   }
   if (doveOpt)
     printDove(dove, header, read1, read2, len1, len2, pos);
-  if (alnOpt)
+  if (alnOpt == 1)
     printAln(aln, header, read1, read2, len1, len2, pos);
+  else if (alnOpt == 2)
+    printAln2(aln, header, read1, read2, len1, len2, pos);
 
   // print stitched sequence
   createSeq(read1[SEQ], read2[SEQ + EXTRA + 1],
@@ -539,7 +564,7 @@ void printRes(File out, File log, int logOpt, File dove,
       read1[SEQ], read1[QUAL]);
 
   // print to alignment output too
-  if (alnOpt) {
+  if (alnOpt == 1) {
     for (int i = 0; i > pos; i--)
       fputc(' ', aln.f);
     fprintf(aln.f, "%s\n", read1[SEQ]);
@@ -647,7 +672,8 @@ int readFile(File in1, File in2, File out, File out2,
  */
 void openWrite(char* outFile, File* out, int gz) {
   if (gz) {
-    if (!strcmp(outFile + strlen(outFile) - strlen(GZEXT), GZEXT))
+    if (!strcmp(outFile + strlen(outFile) - strlen(GZEXT), GZEXT)
+        || !strcmp(outFile, "/dev/null"))
       out->gzf = gzopen(outFile, "w");
     else {
       // add ".gz" to outFile
@@ -762,7 +788,7 @@ void getParams(int argc, char** argv) {
     *unFile = NULL, *logFile = NULL, *doveFile = NULL,
     *alnFile = NULL;
   int overlap = DEFOVER, dovetail = 0, doveOverlap = DEFDOVE,
-    adaptOpt = 0, maxLen = 1, gzOut = 0;
+    adaptOpt = 0, maxLen = 1, gzOut = 0, diffOpt = 0;
   int verbose = 0;
   float mismatch = DEFMISM;
 
@@ -780,6 +806,8 @@ void getParams(int argc, char** argv) {
       adaptOpt = 1;
     else if (!strcmp(argv[i], GZOPT))
       gzOut = 1;
+    else if (!strcmp(argv[i], DIFFOPT))
+      diffOpt = 1;
     else if (!strcmp(argv[i], VERBOSE))
       verbose = 1;
     else if (i < argc - 1) {
@@ -828,6 +856,7 @@ void getParams(int argc, char** argv) {
     dovetail = 1;
     unFile = logFile = alnFile = NULL;
   }
+  int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
 
   // get first set of file names
   char* end1, *end2;
@@ -868,7 +897,7 @@ void getParams(int argc, char** argv) {
     int count = readFile(in1, inter ? in1 : in2, out, out2,
       un1, un2, unFile != NULL, log, logFile != NULL,
       overlap, dovetail, doveOverlap, dove,
-      dovetail && doveFile != NULL, aln, alnFile != NULL,
+      dovetail && doveFile != NULL, aln, alnOpt,
       adaptOpt, mismatch, maxLen, &stitch, &fail,
       gz1, gz2, gzOut);
     tCount += count;

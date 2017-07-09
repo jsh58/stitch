@@ -20,7 +20,6 @@
 // constants
 #define MAX_SIZE    1024    // maximum length of input lines
 #define NOTMATCH    1.5f    // stitch failure
-#define GZEXT       ".gz"   // file extension for gzip compression
 #define COM         ", "    // separator for input file names
 
 // command-line parameters
@@ -40,12 +39,14 @@
 #define ADAPTOPT    "-a"
 #define ALNFILE     "-j"
 #define GZOPT       "-g"
+#define DIFFOPT     "-b"
 #define VERBOSE     "-v"
 #define VERSOPT     "--version"
 
 // extensions for output files
 #define ONEEXT      "_1.fastq"
 #define TWOEXT      "_2.fastq"
+#define GZEXT       ".gz"   // for gzip compression
 
 // default parameter values
 #define DEFOVER     20    // min. overlap
