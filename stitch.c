@@ -53,6 +53,7 @@ void usage(void) {
   fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  %s               Option to print mismatches only to %s log file\n", DIFFOPT, ALNFILE);
   fprintf(stderr, "  %s               Option to gzip-compress FASTQ output files\n", GZOPT);
+  fprintf(stderr, "  %s  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
   fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
 }
@@ -76,6 +77,7 @@ int error(char* msg, int err) {
   else if (err == ERROVER) msg2 = MERROVER;
   else if (err == ERRMISM) msg2 = MERRMISM;
   else if (err == ERRFASTQ) msg2 = MERRFASTQ;
+  else if (err == ERROFFSET) msg2 = MERROFFSET;
   else msg2 = DEFERR;
 
   fprintf(stderr, "Error! %s%s\n", msg, msg2);
@@ -168,11 +170,22 @@ void checkHeaders(char* head1, char* head2, char* header) {
     header[j] = '\0';
 }
 
+/* void checkQual()
+ * Check given quality string for offset errors.
+ */
+void checkQual(char* qual, int len, int offset) {
+  for (int i = 0; i < len; i++)
+    // error if qual < offset; could check max too...
+    if (qual[i] < offset)
+      exit(error("", ERROFFSET));
+}
+
 /* void processSeq()
  * Process the given sequence; save length;
  *   for 2nd read, save reversed seq/qual.
  */
-void processSeq(char** read, int* len, int i, int j) {
+void processSeq(char** read, int* len, int i,
+    int j, int offset) {
 
   // remove new-line character and save length
   int k;
@@ -199,6 +212,10 @@ void processSeq(char** read, int* len, int i, int j) {
     // check 1st read's sequence for non-ACGTN chars
     for (int m = 0; m < k; m++)
       rc(read[j][m]);
+
+  // check quality scores
+  if (j == QUAL)
+    checkQual(read[j], k, offset);
 }
 
 /* int loadReads()
@@ -206,7 +223,8 @@ void processSeq(char** read, int* len, int i, int j) {
  *   consensus header. Return 0 on EOF.
  */
 int loadReads(File in1, File in2, char** read1, char** read2,
-    char* header, int* len1, int* len2, int gz1, int gz2) {
+    char* header, int* len1, int* len2, int offset,
+    int gz1, int gz2) {
 
   // load both reads from input files
   for (int i = 0; i < 2; i++) {
@@ -240,7 +258,7 @@ int loadReads(File in1, File in2, char** read1, char** read2,
 
       // process sequence/quality lines
       if (j == SEQ || j == QUAL)
-        processSeq(read, len, i, j);
+        processSeq(read, len, i, j, offset);
     }
 
     // check for proper fastq formatting
@@ -512,20 +530,33 @@ void printAln(File aln, char* header, char** read1,
  * Create stitched sequence (into seq1, qual1).
  */
 void createSeq(char* seq1, char* seq2, char* qual1, char* qual2,
-    int len1, int len2, int pos) {
+    int len1, int len2, int pos, int offset) {
   int len = len2 + pos;  // length of stitched sequence
   for (int i = 0; i < len; i++) {
     if (i - pos < 0)
+      // 1st read only: continue
       continue;
-    // disagreements favor higher quality score or
-    //   equal quality score that is closer to 5' end
-    else if (i >= len1 ||
-        (seq1[i] != seq2[i-pos] && (qual1[i] < qual2[i-pos] ||
-        (qual1[i] == qual2[i-pos] && i >= len2 - i + pos)))) {
+    else if (i >= len1) {
+      // 2nd read only: copy seq and qual
       seq1[i] = seq2[i-pos];
       qual1[i] = qual2[i-pos];
+    } else if (seq1[i] != seq2[i-pos]) {
+      // disagreements favor higher quality score or
+      //   equal quality score that is not an 'N' or
+      //   is closer to 5' end; reduce qual scores
+      if (qual1[i] < qual2[i-pos] ||
+          (qual1[i] == qual2[i-pos] &&
+          ((i >= len2 - i + pos && seq2[i-pos] != 'N')
+          || seq1[i] == 'N') ) ) {
+        qual1[i] = (seq1[i] == 'N' ? qual2[i-pos]
+          : qual2[i-pos] - qual1[i] + offset + MINQUAL);
+        seq1[i] = seq2[i-pos];
+      } else if (seq2[i-pos] != 'N')
+        qual1[i] -= qual2[i-pos] - offset - MINQUAL;
     } else if (qual1[i] < qual2[i-pos])
+      // seq agreement: use higher qual score
       qual1[i] = qual2[i-pos];
+
   }
   seq1[len] = '\0';
   qual1[len] = '\0';
@@ -537,7 +568,7 @@ void createSeq(char* seq1, char* seq2, char* qual1, char* qual2,
 void printRes(File out, File log, int logOpt, File dove,
     int doveOpt, File aln, int alnOpt, char* header,
     char** read1, char** read2, int len1, int len2,
-    int pos, float best, int gz) {
+    int pos, float best, int offset, int gz) {
   // log result
   if (logOpt) {
     fprintf(log.f, "%s\t%d\t%d\t", header + 1,
@@ -554,8 +585,8 @@ void printRes(File out, File log, int logOpt, File dove,
     printAln2(aln, header, read1, read2, len1, len2, pos);
 
   // print stitched sequence
-  createSeq(read1[SEQ], read2[SEQ + EXTRA + 1],
-    read1[QUAL], read2[QUAL + EXTRA], len1, len2, pos);
+  createSeq(read1[SEQ], read2[SEQ + EXTRA + 1], read1[QUAL],
+    read2[QUAL + EXTRA], len1, len2, pos, offset);
   if (gz)
     gzprintf(out.gzf, "%s\n%s\n+\n%s\n", header,
       read1[SEQ], read1[QUAL]);
@@ -605,7 +636,8 @@ int readFile(File in1, File in2, File out, File out2,
     int logOpt, int overlap, int dovetail, int doveOverlap,
     File dove, int doveOpt, File aln, int alnOpt,
     int adaptOpt, float mismatch, int maxLen,
-    int* stitch, int* fail, int gz1, int gz2, int gzOut) {
+    int* stitch, int* fail, int offset,
+    int gz1, int gz2, int gzOut) {
 
   // allocate memory for both reads
   char** read1 = (char**) memalloc(FASTQ * sizeof(char*));
@@ -622,7 +654,7 @@ int readFile(File in1, File in2, File out, File out2,
   int len1 = 0, len2 = 0; // lengths of reads
   int count = 0;
   while (loadReads(in1, in2, read1, read2, header,
-      &len1, &len2, gz1, gz2)) {
+      &len1, &len2, offset, gz1, gz2)) {
 
     // find optimal overlap
     float best = NOTMATCH;
@@ -647,7 +679,8 @@ int readFile(File in1, File in2, File out, File out2,
           header, read1, read2, len1, len2, pos, best, gzOut);
       } else {
         printRes(out, log, logOpt, dove, doveOpt, aln, alnOpt,
-          header, read1, read2, len1, len2, pos, best, gzOut);
+          header, read1, read2, len1, len2, pos, best, offset,
+          gzOut);
         (*stitch)++;
       }
     }
@@ -788,7 +821,8 @@ void getParams(int argc, char** argv) {
     *unFile = NULL, *logFile = NULL, *doveFile = NULL,
     *alnFile = NULL;
   int overlap = DEFOVER, dovetail = 0, doveOverlap = DEFDOVE,
-    adaptOpt = 0, maxLen = 1, gzOut = 0, diffOpt = 0;
+    adaptOpt = 0, maxLen = 1, gzOut = 0, diffOpt = 0,
+    offset = OFFSET;
   int verbose = 0;
   float mismatch = DEFMISM;
 
@@ -831,6 +865,8 @@ void getParams(int argc, char** argv) {
         doveOverlap = getInt(argv[++i]);
       else if (!strcmp(argv[i], MISMATCH))
         mismatch = getFloat(argv[++i]);
+      else if (!strcmp(argv[i], QUALITY))
+        offset = getInt(argv[++i]);
       else
         exit(error(argv[i], ERRPARAM));
     } else
@@ -899,7 +935,7 @@ void getParams(int argc, char** argv) {
       overlap, dovetail, doveOverlap, dove,
       dovetail && doveFile != NULL, aln, alnOpt,
       adaptOpt, mismatch, maxLen, &stitch, &fail,
-      gz1, gz2, gzOut);
+      offset, gz1, gz2, gzOut);
     tCount += count;
     tStitch += stitch;
     tFail += fail;

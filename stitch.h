@@ -4,7 +4,7 @@
 
   Header file for stitch.c.
 */
-#define VERSION     "0.4"
+#define VERSION     "0.5"
 
 // fastq parts
 #define FASTQ       4       // lines per fastq read
@@ -21,6 +21,8 @@
 #define MAX_SIZE    1024    // maximum length of input lines
 #define NOTMATCH    1.5f    // stitch failure
 #define COM         ", "    // separator for input file names
+#define OFFSET      33      // fastq-sanger quality offset
+#define MINQUAL     2       // minimum quality score (Illumina)
 
 // command-line parameters
 #define HELP        "-h"
@@ -40,6 +42,7 @@
 #define ALNFILE     "-j"
 #define GZOPT       "-g"
 #define DIFFOPT     "-b"
+#define QUALITY     "-q"
 #define VERBOSE     "-v"
 #define VERSOPT     "--version"
 
@@ -83,6 +86,8 @@
 #define MERRMISM    "Mismatch must be in [0,1)"
 #define ERRFASTQ    13
 #define MERRFASTQ   "Input file does not follow fastq format"
+#define ERROFFSET   14
+#define MERROFFSET  "Quality scores outside of set range"
 #define DEFERR      "Unknown error"
 
 typedef union file {
