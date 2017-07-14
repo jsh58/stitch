@@ -490,11 +490,13 @@ void printAln(File aln, char* header, char** read1,
   fprintf(aln.f, "%s\n", header + 1);
 
   // print sequence alignment
+  fprintf(aln.f, "seq_R1:  ");
   for (int i = 0; i > pos; i--)
     fputc(' ', aln.f);
   fprintf(aln.f, "%s\n", read1[SEQ]);
 
   // print '|' for matches, ':' for Ns
+  fprintf(aln.f, "         ");
   int i;
   for (i = 0; i < abs(pos); i++)
     fputc(' ', aln.f);
@@ -512,18 +514,20 @@ void printAln(File aln, char* header, char** read1,
   }
   fputc('\n', aln.f);
 
+  fprintf(aln.f, "seq_R2:  ");
   for (int i = 0; i < pos; i++)
     fputc(' ', aln.f);
   fprintf(aln.f, "%s\n\n", read2[SEQ + EXTRA + 1]);
 
   // print quality scores
+  fprintf(aln.f, "qual_R1: ");
   for (int i = 0; i > pos; i--)
     fputc(' ', aln.f);
   fprintf(aln.f, "%s\n", read1[QUAL]);
+  fprintf(aln.f, "qual_R2: ");
   for (int i = 0; i < pos; i++)
     fputc(' ', aln.f);
-  fprintf(aln.f, "%s\n", read2[QUAL + EXTRA]);
-  fputc('\n', aln.f);
+  fprintf(aln.f, "%s\n\n", read2[QUAL + EXTRA]);
 }
 
 /* void createSeq()
@@ -596,12 +600,14 @@ void printRes(File out, File log, int logOpt, File dove,
 
   // print to alignment output too
   if (alnOpt == 1) {
+    fprintf(aln.f, "merged\nseq:     ");
     for (int i = 0; i > pos; i--)
       fputc(' ', aln.f);
     fprintf(aln.f, "%s\n", read1[SEQ]);
+    fprintf(aln.f, "qual:    ");
     for (int i = 0; i > pos; i--)
       fputc(' ', aln.f);
-    fprintf(aln.f, "%s\n\n", read1[QUAL]);
+    fprintf(aln.f, "%s\n\n\n", read1[QUAL]);
   }
 }
 
