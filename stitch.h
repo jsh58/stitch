@@ -21,8 +21,9 @@
 #define MAX_SIZE    1024    // maximum length of input lines
 #define NOTMATCH    1.5f    // stitch failure
 #define COM         ", "    // separator for input file names
-#define OFFSET      33      // fastq-sanger quality offset
+#define OFFSET      33      // fastq quality offset (Sanger = 33)
 #define MINQUAL     2       // minimum quality score (Illumina)
+#define MAXQUAL     41      // maximum quality score
 
 // command-line parameters
 #define HELP        "-h"

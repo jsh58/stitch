@@ -175,8 +175,8 @@ void checkHeaders(char* head1, char* head2, char* header) {
  */
 void checkQual(char* qual, int len, int offset) {
   for (int i = 0; i < len; i++)
-    // error if qual < offset; could check max too...
-    if (qual[i] < offset)
+    // error if qual < 0 or qual > MAXQUAL
+    if (qual[i] < offset || qual[i] > offset + MAXQUAL)
       exit(error("", ERROFFSET));
 }
 
