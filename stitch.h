@@ -89,6 +89,10 @@
 #define MERRFASTQ   "Input file does not follow fastq format"
 #define ERROFFSET   14
 #define MERROFFSET  "Quality scores outside of set range"
+#define ERRUNGET    15
+#define MERRUNGET   "Failure in ungetc() call"
+#define ERRGZIP     16
+#define MERRGZIP    "Cannot pipe in gzip compressed file (use zcat instead)"
 #define DEFERR      "Unknown error"
 
 typedef union file {

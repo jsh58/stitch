@@ -78,6 +78,8 @@ int error(char* msg, int err) {
   else if (err == ERRMISM) msg2 = MERRMISM;
   else if (err == ERRFASTQ) msg2 = MERRFASTQ;
   else if (err == ERROFFSET) msg2 = MERROFFSET;
+  else if (err == ERRGZIP) msg2 = MERRGZIP;
+  else if (err == ERRUNGET) msg2 = MERRUNGET;
   else msg2 = DEFERR;
 
   fprintf(stderr, "Error! %s%s\n", msg, msg2);
@@ -642,7 +644,7 @@ int readFile(File in1, File in2, File out, File out2,
     int logOpt, int overlap, int dovetail, int doveOverlap,
     File dove, int doveOpt, File aln, int alnOpt,
     int adaptOpt, float mismatch, int maxLen,
-    int* stitch, int* fail, int offset,
+    int* stitch, int offset,
     int gz1, int gz2, int gzOut) {
 
   // allocate memory for both reads
@@ -677,7 +679,6 @@ int readFile(File in1, File in2, File out, File out2,
       else
         printFail(un1, un2, unOpt, log, logOpt, header,
           read1, read2, gzOut);
-      (*fail)++;
     } else {
       // stitch success
       if (adaptOpt) {
@@ -732,42 +733,8 @@ void openWrite(char* outFile, File* out, int gz) {
   }
 }
 
-/* int openRead()
- * Open a file for reading. Return 1 if gzip compressed.
- */
-int openRead(char* inFile, File* in) {
-
-  // check for gzip compression: magic number 0x1F, 0x8B
-  FILE* dummy = fopen(inFile, "r");
-  if (dummy == NULL)
-    exit(error(inFile, ERROPEN));
-  int gzip = 1;
-  for (int i = 0; i < 2; i++) {
-    int j = fgetc(dummy);
-    if (j == EOF)
-      exit(error(inFile, ERROPEN));
-    if ( (i && (unsigned char) j != 0x8B)
-        || (! i && (unsigned char) j != 0x1F) )
-      gzip = 0;
-  }
-
-  // open file
-  if (gzip) {
-    if (fclose(dummy))
-      exit(error("", ERRCLOSE));
-    in->gzf = gzopen(inFile, "r");
-    if (in->gzf == NULL)
-      exit(error(inFile, ERROPEN));
-  } else {
-    rewind(dummy);
-    in->f = dummy;
-  }
-
-  return gzip;
-}
-
 /* void openFiles()
- * Opens the files to run the program.
+ * Opens output files for the program.
  */
 void openFiles(char* outFile, File* out, File* out2,
     char* unFile, File* un1, File* un2,
@@ -816,6 +783,60 @@ void openFiles(char* outFile, File* out, File* out2,
     openWrite(doveFile, dove, 0);
     fprintf(dove->f, "Read\tDovetailFwd\tDovetailRev\n");
   }
+}
+
+/* int openRead()
+ * Open a file for reading. Return 1 if gzip compressed.
+ */
+int openRead(char* inFile, File* in) {
+
+  // open file or stdin
+  int stdBool = (strcmp(inFile, "-") ? 0 : 1); // stdin boolean
+  FILE* dummy = (stdBool ? stdin : fopen(inFile, "r"));
+  if (dummy == NULL)
+    exit(error(inFile, ERROPEN));
+
+  // check for gzip compression: magic number 0x1F, 0x8B
+  int gzip = 1;
+  int save = 0;  // first char to pushback (for stdin)
+  int i, j;
+  for (i = 0; i < 2; i++) {
+    j = fgetc(dummy);
+    if (j == EOF)
+      exit(error(inFile, ERROPEN));
+    if ( (i && (unsigned char) j != 0x8B)
+        || (! i && (unsigned char) j != 0x1F) ) {
+      gzip = 0;
+      break;
+    }
+    if (! i)
+      save = j;
+  }
+
+  // for stdin, push back chars
+  if (stdBool) {
+    if (gzip)
+      exit(error("", ERRGZIP));
+    if (ungetc(j, dummy) == EOF)
+      exit(error("", ERRUNGET));
+    if (i && ungetc(save, dummy) == EOF)
+      exit(error("", ERRUNGET));
+  }
+
+  // open file
+  if (gzip) {
+    if (fclose(dummy))
+      exit(error("", ERRCLOSE));
+    in->gzf = gzopen(inFile, "r");
+    if (in->gzf == NULL)
+      exit(error(inFile, ERROPEN));
+  } else {
+    if (! stdBool)
+      rewind(dummy);
+    in->f = dummy;
+  }
+
+  return gzip;
 }
 
 /* void getParams()
@@ -910,7 +931,7 @@ void getParams(int argc, char** argv) {
   // loop through input files
   File out, out2, un1, un2, log, dove, aln; // output files
   int i = 0;  // number of files processed
-  int tCount = 0, tStitch = 0, tFail = 0;  // counting variables
+  int tCount = 0, tStitch = 0;  // counting variables
   while (file1 && file2) {
 
     if (verbose)
@@ -935,26 +956,23 @@ void getParams(int argc, char** argv) {
     }
 
     // process files
-    int stitch = 0, fail = 0;  // counting variables
+    int stitch = 0;  // counting variable
     int count = readFile(in1, inter ? in1 : in2, out, out2,
       un1, un2, unFile != NULL, log, logFile != NULL,
       overlap, dovetail, doveOverlap, dove,
       dovetail && doveFile != NULL, aln, alnOpt,
-      adaptOpt, mismatch, maxLen, &stitch, &fail,
+      adaptOpt, mismatch, maxLen, &stitch,
       offset, gz1, gz2, gzOut);
     tCount += count;
     tStitch += stitch;
-    tFail += fail;
 
     // log counts
     if (verbose) {
       fprintf(stderr, "  Fragments (pairs of reads) analyzed: %d\n", count);
       if (adaptOpt)
         fprintf(stderr, "    Adapters removed: %d\n", stitch);
-      else {
+      else
         fprintf(stderr, "    Successfully stitched: %d\n", stitch);
-        fprintf(stderr, "    Stitch failures: %d\n", fail);
-      }
     }
 
     // close files
@@ -975,10 +993,8 @@ void getParams(int argc, char** argv) {
     fprintf(stderr, "  Fragments (pairs of reads) analyzed: %d\n", tCount);
     if (adaptOpt)
       fprintf(stderr, "    Adapters removed: %d\n", tStitch);
-    else {
+    else
       fprintf(stderr, "    Successfully stitched: %d\n", tStitch);
-      fprintf(stderr, "    Stitch failures: %d\n", tFail);
-    }
   }
 
   // close files
