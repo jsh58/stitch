@@ -49,10 +49,10 @@ void usage(void) {
   fprintf(stderr, "  %s  <file>       Log file for stitching results of each read\n", LOGFILE);
   fprintf(stderr, "  %s  <file>       FASTQ files for reads that failed stitching\n", UNFILE);
   fprintf(stderr, "                     (output as <file>%s and <file>%s)\n", ONEEXT, TWOEXT);
-  fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (3' overhang(s))\n", DOVEFILE);
+  fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (adapter sequences)\n", DOVEFILE);
   fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  %s               Option to print mismatches only to %s log file\n", DIFFOPT, ALNFILE);
-  fprintf(stderr, "  %s               Option to gzip-compress FASTQ output files\n", GZOPT);
+  fprintf(stderr, "  %s/%s            Option to gzip (%s) or not (%s) FASTQ outputs\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
   fprintf(stderr, "  %s  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
   fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
@@ -872,6 +872,8 @@ void getParams(int argc, char** argv) {
       adaptOpt = 1;
     else if (!strcmp(argv[i], GZOPT))
       gzOut = 1;
+    else if (!strcmp(argv[i], UNGZOPT))
+      gzOut = -1;
     else if (!strcmp(argv[i], DIFFOPT))
       diffOpt = 1;
     else if (!strcmp(argv[i], VERBOSE))
@@ -923,6 +925,8 @@ void getParams(int argc, char** argv) {
   if (adaptOpt) {
     dovetail = 1;
     unFile = logFile = alnFile = NULL;
+    if (verbose && ! strcmp(outFile, "-"))
+      fprintf(stderr, "Warning: in adapter-removal mode, output cannot be stdout\n");
   }
   int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
 
@@ -952,7 +956,9 @@ void getParams(int argc, char** argv) {
 
     // on first iteration, open output files
     if (! i) {
-      if (gz1 || gz2)
+      if (gzOut == -1)
+        gzOut = 0;
+      else if (gz1 || gz2)
         gzOut = 1;
       openFiles(outFile, &out, &out2,
         unFile, &un1, &un2, logFile, &log,
