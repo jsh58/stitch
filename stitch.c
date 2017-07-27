@@ -708,17 +708,19 @@ int readFile(File in1, File in2, File out, File out2,
 }
 
 /* void openWrite()
- * Open a file for writing.
+ * Open a file for writing (stdout if file is '-').
  */
 void openWrite(char* outFile, File* out, int gz) {
   if (gz) {
     if (!strcmp(outFile + strlen(outFile) - strlen(GZEXT), GZEXT)
         || !strcmp(outFile, "/dev/null"))
       out->gzf = gzopen(outFile, "w");
+    else if (!strcmp(outFile, "-"))
+      out->gzf = gzdopen(fileno(stdout), "wb");
     else {
       // add ".gz" to outFile
-      char* outFile2 = memalloc(strlen(outFile) +
-        strlen(GZEXT) + 1);
+      char* outFile2 = memalloc(strlen(outFile)
+        + strlen(GZEXT) + 1);
       strcpy(outFile2, outFile);
       strcat(outFile2, GZEXT);
       out->gzf = gzopen(outFile2, "w");
@@ -727,14 +729,16 @@ void openWrite(char* outFile, File* out, int gz) {
     if (out->gzf == NULL)
       exit(error(outFile, ERROPENW));
   } else {
-    out->f = fopen(outFile, "w");
+    out->f = (strcmp(outFile, "-") ?
+      fopen(outFile, "w") : stdout);
     if (out->f == NULL)
       exit(error(outFile, ERROPENW));
   }
 }
 
 /* void openFiles()
- * Opens output files for the program.
+ * Opens output files for the program,
+ *   adjusting file names/extensions as needed.
  */
 void openFiles(char* outFile, File* out, File* out2,
     char* unFile, File* un1, File* un2,
@@ -781,12 +785,13 @@ void openFiles(char* outFile, File* out, File* out2,
 
   if (dovetail && doveFile != NULL) {
     openWrite(doveFile, dove, 0);
-    fprintf(dove->f, "Read\tDovetailFwd\tDovetailRev\n");
+    fprintf(dove->f, "Read\tAdapter_R1\tAdapter_R2\n");
   }
 }
 
 /* int openRead()
- * Open a file for reading. Return 1 if gzip compressed.
+ * Open a file for reading (stdin if file is '-').
+ *   Return 1 if gzip compressed.
  */
 int openRead(char* inFile, File* in) {
 
@@ -970,9 +975,9 @@ void getParams(int argc, char** argv) {
     if (verbose) {
       fprintf(stderr, "  Fragments (pairs of reads) analyzed: %d\n", count);
       if (adaptOpt)
-        fprintf(stderr, "    Adapters removed: %d\n", stitch);
+        fprintf(stderr, "  Adapters removed: %d\n", stitch);
       else
-        fprintf(stderr, "    Successfully stitched: %d\n", stitch);
+        fprintf(stderr, "  Successfully stitched: %d\n", stitch);
     }
 
     // close files
@@ -992,9 +997,9 @@ void getParams(int argc, char** argv) {
     fprintf(stderr, "Total counts\n");
     fprintf(stderr, "  Fragments (pairs of reads) analyzed: %d\n", tCount);
     if (adaptOpt)
-      fprintf(stderr, "    Adapters removed: %d\n", tStitch);
+      fprintf(stderr, "  Adapters removed: %d\n", tStitch);
     else
-      fprintf(stderr, "    Successfully stitched: %d\n", tStitch);
+      fprintf(stderr, "  Successfully stitched: %d\n", tStitch);
   }
 
   // close files
