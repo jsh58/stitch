@@ -52,7 +52,8 @@ void usage(void) {
   fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (adapter sequences)\n", DOVEFILE);
   fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  %s               Option to print mismatches only to %s log file\n", DIFFOPT, ALNFILE);
-  fprintf(stderr, "  %s/%s            Option to gzip (%s) or not (%s) FASTQ outputs\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
+  fprintf(stderr, "  %s/%s            Option to gzip (%s) or not (%s) FASTQ output(s)\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
+  fprintf(stderr, "  %s               Option to produce interleaved FASTQ output(s)\n", INTEROPT);
   fprintf(stderr, "  %s  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
   fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
@@ -745,35 +746,49 @@ void openFiles(char* outFile, File* out, File* out2,
     char* logFile, File* log,
     char* doveFile, File* dove, int dovetail,
     char* alnFile, File* aln,
-    int adaptOpt, int gz) {
+    int adaptOpt, int gz, int interOpt) {
 
   if (adaptOpt) {
-    int add = strlen(ONEEXT) > strlen(TWOEXT) ?
-      strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
-    char* outFile2 = memalloc(strlen(outFile) + add);
-    strcpy(outFile2, outFile);
-    strcat(outFile2, ONEEXT);
-    openWrite(outFile2, out, gz);
-    strcpy(outFile2, outFile);
-    strcat(outFile2, TWOEXT);
-    openWrite(outFile2, out2, gz);
-    free(outFile2);
+    if (interOpt)
+      openWrite(outFile, out, gz);
+    else {
+      // add "_1.fastq.gz" and "_2.fastq.gz" extensions
+      if (! strcmp(outFile, "-"))
+        exit(error("stdout + \"_1.fastq\"", ERROPENW));
+      int add = strlen(ONEEXT) > strlen(TWOEXT) ?
+        strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
+      char* outFile2 = memalloc(strlen(outFile) + add);
+      strcpy(outFile2, outFile);
+      strcat(outFile2, ONEEXT);
+      openWrite(outFile2, out, gz);
+      strcpy(outFile2, outFile);
+      strcat(outFile2, TWOEXT);
+      openWrite(outFile2, out2, gz);
+      free(outFile2);
+    }
 
   } else {
     openWrite(outFile, out, gz);
 
     // open optional files
     if (unFile != NULL) {
-      int add = strlen(ONEEXT) > strlen(TWOEXT) ?
-        strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
-      char* unFile2 = memalloc(strlen(unFile) + add);
-      strcpy(unFile2, unFile);
-      strcat(unFile2, ONEEXT);
-      openWrite(unFile2, un1, gz);
-      strcpy(unFile2, unFile);
-      strcat(unFile2, TWOEXT);
-      openWrite(unFile2, un2, gz);
-      free(unFile2);
+      if (interOpt)
+        openWrite(unFile, un1, gz);
+      else {
+        // add "_1.fastq.gz" and "_2.fastq.gz" extensions
+        if (! strcmp(unFile, "-"))
+          exit(error("stdout + \"_1.fastq\"", ERROPENW));
+        int add = strlen(ONEEXT) > strlen(TWOEXT) ?
+          strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
+        char* unFile2 = memalloc(strlen(unFile) + add);
+        strcpy(unFile2, unFile);
+        strcat(unFile2, ONEEXT);
+        openWrite(unFile2, un1, gz);
+        strcpy(unFile2, unFile);
+        strcat(unFile2, TWOEXT);
+        openWrite(unFile2, un2, gz);
+        free(unFile2);
+      }
     }
     if (logFile != NULL) {
       openWrite(logFile, log, 0);
@@ -854,7 +869,7 @@ void getParams(int argc, char** argv) {
     *alnFile = NULL;
   int overlap = DEFOVER, dovetail = 0, doveOverlap = DEFDOVE,
     adaptOpt = 0, maxLen = 1, gzOut = 0, diffOpt = 0,
-    offset = OFFSET;
+    interOpt = 0, offset = OFFSET;
   int verbose = 0;
   float mismatch = DEFMISM;
 
@@ -876,6 +891,8 @@ void getParams(int argc, char** argv) {
       gzOut = -1;
     else if (!strcmp(argv[i], DIFFOPT))
       diffOpt = 1;
+    else if (!strcmp(argv[i], INTEROPT))
+      interOpt = 1;
     else if (!strcmp(argv[i], VERBOSE))
       verbose = 1;
     else if (i < argc - 1) {
@@ -925,8 +942,6 @@ void getParams(int argc, char** argv) {
   if (adaptOpt) {
     dovetail = 1;
     unFile = logFile = alnFile = NULL;
-    if (verbose && ! strcmp(outFile, "-"))
-      fprintf(stderr, "Warning: in adapter-removal mode, output cannot be stdout\n");
   }
   int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
 
@@ -963,13 +978,15 @@ void getParams(int argc, char** argv) {
       openFiles(outFile, &out, &out2,
         unFile, &un1, &un2, logFile, &log,
         doveFile, &dove, dovetail, alnFile, &aln,
-        adaptOpt, gzOut);
+        adaptOpt, gzOut, interOpt);
     }
 
     // process files
     int stitch = 0;  // counting variable
-    int count = readFile(in1, inter ? in1 : in2, out, out2,
-      un1, un2, unFile != NULL, log, logFile != NULL,
+    int count = readFile(in1, inter ? in1 : in2,
+      out, interOpt ? out : out2,
+      un1, interOpt ? un1 : un2, unFile != NULL,
+      log, logFile != NULL,
       overlap, dovetail, doveOverlap, dove,
       dovetail && doveFile != NULL, aln, alnOpt,
       adaptOpt, mismatch, maxLen, &stitch,
@@ -1010,12 +1027,13 @@ void getParams(int argc, char** argv) {
 
   // close files
   if ( ( gzOut && ( gzclose(out.gzf) != Z_OK ||
-      (adaptOpt && gzclose(out2.gzf) != Z_OK) ||
+      (adaptOpt && ! interOpt && gzclose(out2.gzf) != Z_OK) ||
       (unFile != NULL && (gzclose(un1.gzf) != Z_OK ||
-      gzclose(un2.gzf) != Z_OK) ) ) ) ||
+      (! interOpt && gzclose(un2.gzf) != Z_OK)) ) ) ) ||
       ( ! gzOut && ( fclose(out.f) ||
-      (adaptOpt && fclose(out2.f)) ||
-      (unFile != NULL && (fclose(un1.f) || fclose(un2.f)) ) ) ) ||
+      (adaptOpt && ! interOpt && fclose(out2.f)) ||
+      (unFile != NULL && (fclose(un1.f) ||
+      (! interOpt && fclose(un2.f)) ) ) ) ) ||
       (logFile != NULL && fclose(log.f)) ||
       (dovetail && doveFile != NULL && fclose(dove.f)) ||
       (alnFile != NULL && fclose(aln.f)) )

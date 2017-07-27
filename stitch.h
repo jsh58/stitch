@@ -24,6 +24,7 @@
 #define OFFSET      33      // fastq quality offset (Sanger = 33)
 #define MINQUAL     2       // minimum quality score (Illumina)
 #define MAXQUAL     41      // maximum quality score
+#define NA          "NA"    // n/a
 
 // command-line parameters
 #define HELP        "-h"
@@ -44,6 +45,7 @@
 #define GZOPT       "-g"
 #define UNGZOPT     "-u"
 #define DIFFOPT     "-b"
+#define INTEROPT    "-t"
 #define QUALITY     "-q"
 #define VERBOSE     "-v"
 #define VERSOPT     "--version"
@@ -57,7 +59,6 @@
 #define DEFOVER     20    // min. overlap
 #define DEFDOVE     50    // min. overlap for dovetailed reads
 #define DEFMISM     0.1f  // mismatch fraction
-#define NA          "NA"  // n/a
 
 // error messages
 #define ERROPEN     0
