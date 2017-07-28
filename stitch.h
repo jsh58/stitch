@@ -47,6 +47,7 @@
 #define DIFFOPT     "-b"
 #define INTEROPT    "-t"
 #define QUALITY     "-q"
+#define THREADS     "-n"
 #define VERBOSE     "-v"
 #define VERSOPT     "--version"
 
@@ -59,6 +60,7 @@
 #define DEFOVER     20    // min. overlap
 #define DEFDOVE     50    // min. overlap for dovetailed reads
 #define DEFMISM     0.1f  // mismatch fraction
+#define DEFTHR      1     // number of threads
 
 // error messages
 #define ERROPEN     0
@@ -95,6 +97,8 @@
 #define MERRUNGET   "Failure in ungetc() call"
 #define ERRGZIP     16
 #define MERRGZIP    "Cannot pipe in gzip compressed file (use zcat instead)"
+#define ERRTHREAD   17
+#define MERRTHREAD  "Number of threads must be >= 1"
 #define DEFERR      "Unknown error"
 
 typedef union file {

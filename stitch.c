@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
+#include <omp.h>
 #include "stitch.h"
 
 /* void printVersion()
@@ -46,7 +47,7 @@ void usage(void) {
   fprintf(stderr, "  %s  <int>        Minimum overlap of dovetailed reads (def. %d)\n", DOVEOVER, DEFDOVE);
   fprintf(stderr, "  %s               Option to produce shortest stitched read\n", MAXOPT);
   fprintf(stderr, "I/O options:\n");
-  fprintf(stderr, "  %s  <file>       Log file for stitching results of each read\n", LOGFILE);
+  fprintf(stderr, "  %s  <file>       Log file for stitching results of each read pair\n", LOGFILE);
   fprintf(stderr, "  %s  <file>       FASTQ files for reads that failed stitching\n", UNFILE);
   fprintf(stderr, "                     (output as <file>%s and <file>%s)\n", ONEEXT, TWOEXT);
   fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (adapter sequences)\n", DOVEFILE);
@@ -55,6 +56,7 @@ void usage(void) {
   fprintf(stderr, "  %s/%s            Option to gzip (%s) or not (%s) FASTQ output(s)\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
   fprintf(stderr, "  %s               Option to produce interleaved FASTQ output(s)\n", INTEROPT);
   fprintf(stderr, "  %s  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
+  fprintf(stderr, "  %s  <int>        Number of threads to use (def. %d)\n", THREADS, DEFTHR);
   fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
 }
@@ -81,6 +83,7 @@ int error(char* msg, int err) {
   else if (err == ERROFFSET) msg2 = MERROFFSET;
   else if (err == ERRGZIP) msg2 = MERRGZIP;
   else if (err == ERRUNGET) msg2 = MERRUNGET;
+  else if (err == ERRTHREAD) msg2 = MERRTHREAD;
   else msg2 = DEFERR;
 
   fprintf(stderr, "Error! %s%s\n", msg, msg2);
@@ -229,26 +232,27 @@ int loadReads(File in1, File in2, char** read1, char** read2,
     char* header, int* len1, int* len2, int offset,
     int gz1, int gz2) {
 
-  // load both reads from input files
+  // load both reads from input files (LOCK)
+  int flag = 0;  // boolean for EOF
+  #pragma omp critical
   for (int i = 0; i < 2; i++) {
     File in = in1;
     char** read = read1;
-    int* len = len1;
     int gz = gz1;
     if (i) {
       in = in2;
       read = read2;
-      len = len2;
       gz = gz2;
     }
 
     // load read (4 lines)
-    for (int j = 0; j < FASTQ; j++) {
+    for (int j = 0; j < FASTQ; j++)
       if (getLine(read[j], MAX_SIZE, in, gz) == NULL) {
         if (j == 0) {
-          if (i == 0)
-            return 0;  // EOF
-          else {
+          if (i == 0) {
+            flag = 1;  // EOF
+            break;
+          } else {
             int k = 0;
             for ( ; read1[HEAD][k] != '\n' && read1[HEAD][k] != '\0'
               && read1[HEAD][k] != ' '; k++) ;
@@ -258,16 +262,24 @@ int loadReads(File in1, File in2, char** read1, char** read2,
         } else
           exit(error("", ERRSEQ));
       }
+    if (flag)
+      break;
 
-      // process sequence/quality lines
-      if (j == SEQ || j == QUAL)
-        processSeq(read, len, i, j, offset);
-    }
+  }  // (UNLOCK)
 
-    // check for proper fastq formatting
-    if (read[HEAD][0] != BEGIN || read[PLUS][0] != PLUSCHAR)
-      exit(error("", ERRFASTQ));
-  }
+  if (flag)
+    return 0;  // EOF
+
+  // check fastq formatting
+  if (read1[HEAD][0] != BEGIN || read1[PLUS][0] != PLUSCHAR
+      || read2[HEAD][0] != BEGIN || read2[PLUS][0] != PLUSCHAR)
+    exit(error("", ERRFASTQ));
+
+  // process sequence/quality lines
+  processSeq(read1, len1, 0, SEQ, offset);
+  processSeq(read1, len1, 0, QUAL, offset);
+  processSeq(read2, len2, 1, SEQ, offset);
+  processSeq(read2, len2, 1, QUAL, offset);
 
   // check headers
   checkHeaders(read1[HEAD], read2[HEAD], header);
@@ -648,6 +660,10 @@ int readFile(File in1, File in2, File out, File out2,
     int* stitch, int offset,
     int gz1, int gz2, int gzOut) {
 
+  int count = 0, stitchRed = 0;
+#pragma omp parallel reduction(+: count, stitchRed)
+{
+
   // allocate memory for both reads
   char** read1 = (char**) memalloc(FASTQ * sizeof(char*));
   char** read2 = (char**) memalloc((FASTQ + EXTRA) * sizeof(char*));
@@ -661,7 +677,6 @@ int readFile(File in1, File in2, File out, File out2,
 
   // process reads
   int len1 = 0, len2 = 0; // lengths of reads
-  int count = 0;
   while (loadReads(in1, in2, read1, read2, header,
       &len1, &len2, offset, gz1, gz2)) {
 
@@ -671,6 +686,10 @@ int readFile(File in1, File in2, File out, File out2,
       read1[QUAL], read2[QUAL + EXTRA], len1, len2, overlap,
       dovetail, doveOverlap, mismatch, maxLen, &best);
 
+// output LOCK -- consider separate locks for diff. outputs
+//   i.e. outLock, unLock, logLock, doveLock, alnLock
+#pragma omp critical
+{
     // print result
     if (pos == len1 - overlap + 1) {
       // stitch failure
@@ -683,15 +702,16 @@ int readFile(File in1, File in2, File out, File out2,
     } else {
       // stitch success
       if (adaptOpt) {
-        (*stitch) += printResAdapt(out, out2, dove, doveOpt,
+        stitchRed += printResAdapt(out, out2, dove, doveOpt,
           header, read1, read2, len1, len2, pos, best, gzOut);
       } else {
         printRes(out, log, logOpt, dove, doveOpt, aln, alnOpt,
           header, read1, read2, len1, len2, pos, best, offset,
           gzOut);
-        (*stitch)++;
+        stitchRed++;
       }
     }
+}  // output UNLOCK
 
     count++;
   }
@@ -705,6 +725,9 @@ int readFile(File in1, File in2, File out, File out2,
   }
   free(read1);
   free(read2);
+}  // parallel UNLOCK
+
+  *stitch = stitchRed;
   return count;
 }
 
@@ -869,7 +892,7 @@ void getParams(int argc, char** argv) {
     *alnFile = NULL;
   int overlap = DEFOVER, dovetail = 0, doveOverlap = DEFDOVE,
     adaptOpt = 0, maxLen = 1, gzOut = 0, diffOpt = 0,
-    interOpt = 0, offset = OFFSET;
+    interOpt = 0, offset = OFFSET, threads = DEFTHR;
   int verbose = 0;
   float mismatch = DEFMISM;
 
@@ -918,6 +941,8 @@ void getParams(int argc, char** argv) {
         mismatch = getFloat(argv[++i]);
       else if (!strcmp(argv[i], QUALITY))
         offset = getInt(argv[++i]);
+      else if (!strcmp(argv[i], THREADS))
+        threads = getInt(argv[++i]);
       else
         exit(error(argv[i], ERRPARAM));
     } else
@@ -937,6 +962,9 @@ void getParams(int argc, char** argv) {
     exit(error("", ERROVER));
   if (mismatch < 0.0f || mismatch >= 1.0f)
     exit(error("", ERRMISM));
+  if (threads < 1)
+    exit(error("", ERRTHREAD));
+  omp_set_num_threads(threads);
 
   // adjust parameters for adapter-removal mode
   if (adaptOpt) {
