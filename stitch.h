@@ -4,7 +4,7 @@
 
   Header file for stitch.c.
 */
-#define VERSION     "0.5"
+#define VERSION     "0.6"
 
 // fastq parts
 #define FASTQ       4       // lines per fastq read

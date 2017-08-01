@@ -772,12 +772,12 @@ void openFiles(char* outFile, File* out, File* out2,
     int adaptOpt, int gz, int interOpt) {
 
   if (adaptOpt) {
-    if (interOpt)
+    if (interOpt || ! strcmp(outFile, "/dev/null"))
       openWrite(outFile, out, gz);
+    else if (! strcmp(outFile, "-"))
+      exit(error("stdout + \"_1.fastq\"", ERROPENW));
     else {
-      // add "_1.fastq.gz" and "_2.fastq.gz" extensions
-      if (! strcmp(outFile, "-"))
-        exit(error("stdout + \"_1.fastq\"", ERROPENW));
+      // add "_1.fastq" and "_2.fastq" extensions
       int add = strlen(ONEEXT) > strlen(TWOEXT) ?
         strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
       char* outFile2 = memalloc(strlen(outFile) + add);
@@ -795,12 +795,12 @@ void openFiles(char* outFile, File* out, File* out2,
 
     // open optional files
     if (unFile != NULL) {
-      if (interOpt)
+      if (interOpt || ! strcmp(unFile, "/dev/null"))
         openWrite(unFile, un1, gz);
+      else if (! strcmp(unFile, "-"))
+        exit(error("stdout + \"_1.fastq\"", ERROPENW));
       else {
-        // add "_1.fastq.gz" and "_2.fastq.gz" extensions
-        if (! strcmp(unFile, "-"))
-          exit(error("stdout + \"_1.fastq\"", ERROPENW));
+        // add "_1.fastq" and "_2.fastq" extensions
         int add = strlen(ONEEXT) > strlen(TWOEXT) ?
           strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
         char* unFile2 = memalloc(strlen(unFile) + add);
