@@ -772,11 +772,14 @@ void openFiles(char* outFile, File* out, File* out2,
     int adaptOpt, int gz, int interOpt) {
 
   if (adaptOpt) {
-    if (interOpt || ! strcmp(outFile, "/dev/null"))
+    if (interOpt)
       openWrite(outFile, out, gz);
     else if (! strcmp(outFile, "-"))
       exit(error("stdout + \"_1.fastq\"", ERROPENW));
-    else {
+    else if (! strcmp(outFile, "/dev/null")) {
+      openWrite(outFile, out, gz);
+      openWrite(outFile, out2, gz);
+    } else {
       // add "_1.fastq" and "_2.fastq" extensions
       int add = strlen(ONEEXT) > strlen(TWOEXT) ?
         strlen(ONEEXT) + 1 : strlen(TWOEXT) + 1;
@@ -795,7 +798,7 @@ void openFiles(char* outFile, File* out, File* out2,
 
     // open optional files
     if (unFile != NULL) {
-      if (interOpt || ! strcmp(unFile, "/dev/null"))
+      if (interOpt)
         openWrite(unFile, un1, gz);
       else if (! strcmp(unFile, "-"))
         exit(error("stdout + \"_1.fastq\"", ERROPENW));
