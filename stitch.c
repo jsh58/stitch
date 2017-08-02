@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
-#include <omp.h>
 #include "stitch.h"
 
 /* void printVersion()
@@ -658,10 +657,10 @@ int readFile(File in1, File in2, File out, File out2,
     File dove, int doveOpt, File aln, int alnOpt,
     int adaptOpt, float mismatch, int maxLen,
     int* stitch, int offset,
-    int gz1, int gz2, int gzOut) {
+    int gz1, int gz2, int gzOut, int threads) {
 
   int count = 0, stitchRed = 0;
-#pragma omp parallel reduction(+: count, stitchRed)
+#pragma omp parallel num_threads(threads) reduction(+: count, stitchRed)
 {
 
   // allocate memory for both reads
@@ -686,8 +685,7 @@ int readFile(File in1, File in2, File out, File out2,
       read1[QUAL], read2[QUAL + EXTRA], len1, len2, overlap,
       dovetail, doveOverlap, mismatch, maxLen, &best);
 
-// output LOCK -- consider separate locks for diff. outputs
-//   i.e. outLock, unLock, logLock, doveLock, alnLock
+// output LOCK
 #pragma omp critical
 {
     // print result
@@ -967,7 +965,6 @@ void getParams(int argc, char** argv) {
     exit(error("", ERRMISM));
   if (threads < 1)
     exit(error("", ERRTHREAD));
-  omp_set_num_threads(threads);
 
   // adjust parameters for adapter-removal mode
   if (adaptOpt) {
@@ -1021,7 +1018,7 @@ void getParams(int argc, char** argv) {
       overlap, dovetail, doveOverlap, dove,
       dovetail && doveFile != NULL, aln, alnOpt,
       adaptOpt, mismatch, maxLen, &stitch,
-      offset, gz1, gz2, gzOut);
+      offset, gz1, gz2, gzOut, threads);
     tCount += count;
     tStitch += stitch;
 
