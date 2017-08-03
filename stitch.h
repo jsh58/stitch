@@ -26,6 +26,14 @@
 #define MAXQUAL     41      // maximum quality score
 #define NA          "NA"    // n/a
 
+// OMP locks
+#define OMP_LOCKS   5       // number of locks
+#define OUT         0       // lock for output fastq file(s)
+#define UN          1       // lock for unstitched fastq file(s)
+#define LOG         2       // lock for log file
+#define DOVE        3       // lock for dovetail log file
+#define ALN         4       // lock for formatted alignments file
+
 // command-line parameters
 #define HELP        "-h"
 #define HELP2       "--help"
@@ -85,19 +93,21 @@
 #define MERRFLOAT   ": cannot convert to float"
 #define ERRPARAM    10
 #define MERRPARAM   ": unknown command-line parameter"
-#define ERROVER     11
+#define ERRPARAM2   11
+#define MERRPARAM2  ": unknown command-line parameter with no arg"
+#define ERROVER     12
 #define MERROVER    "Overlap must be greater than 0"
-#define ERRMISM     12
+#define ERRMISM     13
 #define MERRMISM    "Mismatch must be in [0,1)"
-#define ERRFASTQ    13
+#define ERRFASTQ    14
 #define MERRFASTQ   "Input file does not follow fastq format"
-#define ERROFFSET   14
+#define ERROFFSET   15
 #define MERROFFSET  "Quality scores outside of set range"
-#define ERRUNGET    15
+#define ERRUNGET    16
 #define MERRUNGET   "Failure in ungetc() call"
-#define ERRGZIP     16
+#define ERRGZIP     17
 #define MERRGZIP    "Cannot pipe in gzip compressed file (use zcat instead)"
-#define ERRTHREAD   17
+#define ERRTHREAD   18
 #define MERRTHREAD  "Number of threads must be >= 1"
 #define DEFERR      "Unknown error"
 

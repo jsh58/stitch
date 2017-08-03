@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
+#include <omp.h>
 #include "stitch.h"
 
 /* void printVersion()
@@ -76,6 +77,7 @@ int error(char* msg, int err) {
   else if (err == ERRINT) msg2 = MERRINT;
   else if (err == ERRFLOAT) msg2 = MERRFLOAT;
   else if (err == ERRPARAM) msg2 = MERRPARAM;
+  else if (err == ERRPARAM2) msg2 = MERRPARAM2;
   else if (err == ERROVER) msg2 = MERROVER;
   else if (err == ERRMISM) msg2 = MERRMISM;
   else if (err == ERRFASTQ) msg2 = MERRFASTQ;
@@ -135,6 +137,7 @@ char rc(char in) {
     char msg[4] = "";
     msg[0] = msg[2] = '\'';
     msg[1] = in;
+    msg[3] = '\0';
     exit(error(msg, ERRUNK));
   }
   return out;
@@ -382,11 +385,15 @@ int findPos (char* seq1, char* seq2, char* qual1,
  * Log 3' overhangs of dovetailed reads.
  */
 void printDove(File dove, char* header, char** read1,
-    char** read2, int len1, int len2, int pos) {
-  if (len1 > len2 + pos || pos < 0)
+    char** read2, int len1, int len2, int pos,
+    omp_lock_t* lock) {
+  if (len1 > len2 + pos || pos < 0) {
+    omp_set_lock(lock);
     fprintf(dove.f, "%s\t%s\t%s\n", header + 1,
       len1 > len2 + pos ? read1[SEQ] + len2 + pos : "-",
       pos < 0 ? read2[SEQ] + len2 + pos : "-");
+    omp_unset_lock(lock);
+  }
 }
 
 /* void printGZNoAdapt()
@@ -445,7 +452,8 @@ void printNoAdapt(FILE* out1, FILE* out2, char** read1,
  */
 int printResAdapt(File out1, File out2, File dove,
     int doveOpt, char* header, char** read1, char** read2,
-    int len1, int len2, int pos, float best, int gz) {
+    int len1, int len2, int pos, float best, int gz,
+    omp_lock_t* lock) {
 
   int adapter = 0;
   int end1 = len1;
@@ -460,16 +468,18 @@ int printResAdapt(File out1, File out2, File dove,
       end2 += pos;
     if (doveOpt)
       printDove(dove, header, read1, read2,
-        len1, len2, pos);
+        len1, len2, pos, lock + DOVE);
   }
 
   // print output
+  omp_set_lock(lock + OUT);
   if (gz)
     printGZNoAdapt(out1.gzf, out2.gzf, read1, read2,
       end1, end2);
   else
     printNoAdapt(out1.f, out2.f, read1, read2,
       end1, end2);
+  omp_unset_lock(lock + OUT);
 
   return adapter;
 }
@@ -586,34 +596,45 @@ void createSeq(char* seq1, char* seq2, char* qual1, char* qual2,
 void printRes(File out, File log, int logOpt, File dove,
     int doveOpt, File aln, int alnOpt, char* header,
     char** read1, char** read2, int len1, int len2,
-    int pos, float best, int offset, int gz) {
+    int pos, float best, int offset, int gz,
+    omp_lock_t* lock) {
   // log result
   if (logOpt) {
+    omp_set_lock(lock + LOG);
     fprintf(log.f, "%s\t%d\t%d\t", header + 1,
       pos < 0 ? (len2+pos < len1 ? len2+pos : len1) :
       (len1-pos < len2 ? len1-pos : len2), len2 + pos);
     best ? fprintf(log.f, "%.3f", best) : fprintf(log.f, "0");
     fprintf(log.f, "\n");
+    omp_unset_lock(lock + LOG);
   }
   if (doveOpt)
-    printDove(dove, header, read1, read2, len1, len2, pos);
-  if (alnOpt == 1)
-    printAln(aln, header, read1, read2, len1, len2, pos);
-  else if (alnOpt == 2)
-    printAln2(aln, header, read1, read2, len1, len2, pos);
+    printDove(dove, header, read1, read2, len1, len2,
+      pos, lock + DOVE);
+  if (alnOpt) {
+    omp_set_lock(lock + ALN);
+    if (alnOpt == 1)
+      printAln(aln, header, read1, read2, len1, len2, pos);
+    else if (alnOpt == 2)
+      printAln2(aln, header, read1, read2, len1, len2, pos);
+    omp_unset_lock(lock + ALN);
+  }
 
   // print stitched sequence
   createSeq(read1[SEQ], read2[SEQ + EXTRA + 1], read1[QUAL],
     read2[QUAL + EXTRA], len1, len2, pos, offset);
+  omp_set_lock(lock + OUT);
   if (gz)
     gzprintf(out.gzf, "%s\n%s\n+\n%s\n", header,
       read1[SEQ], read1[QUAL]);
   else
     fprintf(out.f, "%s\n%s\n+\n%s\n", header,
       read1[SEQ], read1[QUAL]);
+  omp_unset_lock(lock + OUT);
 
   // print to alignment output too
   if (alnOpt == 1) {
+    omp_set_lock(lock + ALN);
     fprintf(aln.f, "merged\nseq:     ");
     for (int i = 0; i > pos; i--)
       fputc(' ', aln.f);
@@ -622,6 +643,7 @@ void printRes(File out, File log, int logOpt, File dove,
     for (int i = 0; i > pos; i--)
       fputc(' ', aln.f);
     fprintf(aln.f, "%s\n\n\n", read1[QUAL]);
+    omp_unset_lock(lock + ALN);
   }
 }
 
@@ -630,10 +652,15 @@ void printRes(File out, File log, int logOpt, File dove,
  */
 void printFail(File un1, File un2, int unOpt,
     File log, int logOpt, char* header, char** read1,
-    char** read2, int gz) {
-  if (logOpt)
+    char** read2, int gz, omp_lock_t* outLock,
+    omp_lock_t* logLock) {
+  if (logOpt) {
+    omp_set_lock(logLock);
     fprintf(log.f, "%s\t%s\n", header + 1, NA);
+    omp_unset_lock(logLock);
+  }
   if (unOpt) {
+    omp_set_lock(outLock);
     if (gz) {
       gzprintf(un1.gzf, "%s%s\n%s%s\n", read1[HEAD],
         read1[SEQ], read1[PLUS], read1[QUAL]);
@@ -645,6 +672,7 @@ void printFail(File un1, File un2, int unOpt,
       fprintf(un2.f, "%s%s\n%s%s\n", read2[HEAD],
         read2[SEQ], read2[PLUS], read2[QUAL]);
     }
+    omp_unset_lock(outLock);
   }
 }
 
@@ -659,71 +687,79 @@ int readFile(File in1, File in2, File out, File out2,
     int* stitch, int offset,
     int gz1, int gz2, int gzOut, int threads) {
 
+  // initialize omp locks -- out, un, log, dove, aln
+  omp_lock_t lock[OMP_LOCKS];
+  for (int i = 0; i < OMP_LOCKS; i++)
+    omp_init_lock(&lock[i]);
+
+  // process files in parallel
   int count = 0, stitchRed = 0;
-#pragma omp parallel num_threads(threads) reduction(+: count, stitchRed)
-{
+  #pragma omp parallel num_threads(threads) reduction(+: count, stitchRed)
+  {
 
-  // allocate memory for both reads
-  char** read1 = (char**) memalloc(FASTQ * sizeof(char*));
-  char** read2 = (char**) memalloc((FASTQ + EXTRA) * sizeof(char*));
-  for (int i = 0; i < FASTQ + EXTRA; i++) {
-    if (i < FASTQ)
-      read1[i] = (char*) memalloc(MAX_SIZE);
-    // for 2nd read, save extra fields for revComp(seq) and rev(qual)
-    read2[i] = (char*) memalloc(MAX_SIZE);
-  }
-  char* header = (char*) memalloc(MAX_SIZE); // consensus header
-
-  // process reads
-  int len1 = 0, len2 = 0; // lengths of reads
-  while (loadReads(in1, in2, read1, read2, header,
-      &len1, &len2, offset, gz1, gz2)) {
-
-    // find optimal overlap
-    float best = NOTMATCH;
-    int pos = findPos(read1[SEQ], read2[SEQ + EXTRA + 1],
-      read1[QUAL], read2[QUAL + EXTRA], len1, len2, overlap,
-      dovetail, doveOverlap, mismatch, maxLen, &best);
-
-// output LOCK
-#pragma omp critical
-{
-    // print result
-    if (pos == len1 - overlap + 1) {
-      // stitch failure
-      if (adaptOpt)
-        printFail(out, out2, 1, log, 0, header, read1,
-          read2, gzOut);
-      else
-        printFail(un1, un2, unOpt, log, logOpt, header,
-          read1, read2, gzOut);
-    } else {
-      // stitch success
-      if (adaptOpt) {
-        stitchRed += printResAdapt(out, out2, dove, doveOpt,
-          header, read1, read2, len1, len2, pos, best, gzOut);
-      } else {
-        printRes(out, log, logOpt, dove, doveOpt, aln, alnOpt,
-          header, read1, read2, len1, len2, pos, best, offset,
-          gzOut);
-        stitchRed++;
-      }
+    // allocate memory for both reads
+    char** read1 = (char**) memalloc(FASTQ * sizeof(char*));
+    char** read2 = (char**) memalloc((FASTQ + EXTRA) * sizeof(char*));
+    for (int i = 0; i < FASTQ + EXTRA; i++) {
+      if (i < FASTQ)
+        read1[i] = (char*) memalloc(MAX_SIZE);
+      // for 2nd read, save extra fields for revComp(seq) and rev(qual)
+      read2[i] = (char*) memalloc(MAX_SIZE);
     }
-}  // output UNLOCK
+    char* header = (char*) memalloc(MAX_SIZE); // consensus header
 
-    count++;
-  }
+    // process reads
+    int len1 = 0, len2 = 0; // lengths of reads
+    while (loadReads(in1, in2, read1, read2, header,
+        &len1, &len2, offset, gz1, gz2)) {
 
-  // free memory
-  free(header);
-  for (int i = 0; i < FASTQ + EXTRA; i++) {
-    if (i < FASTQ)
-      free(read1[i]);
-    free(read2[i]);
-  }
-  free(read1);
-  free(read2);
-}  // parallel UNLOCK
+      // find optimal overlap
+      float best = NOTMATCH;
+      int pos = findPos(read1[SEQ], read2[SEQ + EXTRA + 1],
+        read1[QUAL], read2[QUAL + EXTRA], len1, len2, overlap,
+        dovetail, doveOverlap, mismatch, maxLen, &best);
+
+      // print result
+      if (pos == len1 - overlap + 1) {
+        // stitch failure
+        if (adaptOpt)
+          printFail(out, out2, 1, log, 0, header, read1,
+            read2, gzOut, lock + OUT, lock + LOG);
+        else
+          printFail(un1, un2, unOpt, log, logOpt, header,
+            read1, read2, gzOut, lock + UN, lock + LOG);
+      } else {
+        // stitch success
+        if (adaptOpt) {
+          stitchRed += printResAdapt(out, out2, dove, doveOpt,
+            header, read1, read2, len1, len2, pos, best,
+            gzOut, lock);
+        } else {
+          printRes(out, log, logOpt, dove, doveOpt, aln, alnOpt,
+            header, read1, read2, len1, len2, pos, best, offset,
+            gzOut, lock);
+          stitchRed++;
+        }
+      }
+
+      count++;
+    }
+
+    // free memory
+    free(header);
+    for (int i = 0; i < FASTQ + EXTRA; i++) {
+      if (i < FASTQ)
+        free(read1[i]);
+      free(read2[i]);
+    }
+    free(read1);
+    free(read2);
+
+  }  // END parallel
+
+  // destroy omp locks
+  for (int i = 0; i < 5; i++)
+    omp_destroy_lock(&lock[i]);
 
   *stitch = stitchRed;
   return count;
@@ -947,7 +983,7 @@ void getParams(int argc, char** argv) {
       else
         exit(error(argv[i], ERRPARAM));
     } else
-      usage();
+      exit(error(argv[i], ERRPARAM2));
   }
 
   // check for parameter errors
