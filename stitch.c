@@ -64,30 +64,8 @@ void usage(void) {
 /* int error()
  * Prints an error message.
  */
-int error(char* msg, int err) {
-  char* msg2;
-  if (err == ERROPEN) msg2 = MERROPEN;
-  else if (err == ERRCLOSE) msg2 = MERRCLOSE;
-  else if (err == ERROPENW) msg2 = MERROPENW;
-  else if (err == ERRUNK) msg2 = MERRUNK;
-  else if (err == ERRMEM) msg2 = MERRMEM;
-  else if (err == ERRSEQ) msg2 = MERRSEQ;
-  else if (err == ERRQUAL) msg2 = MERRQUAL;
-  else if (err == ERRHEAD) msg2 = MERRHEAD;
-  else if (err == ERRINT) msg2 = MERRINT;
-  else if (err == ERRFLOAT) msg2 = MERRFLOAT;
-  else if (err == ERRPARAM) msg2 = MERRPARAM;
-  else if (err == ERRPARAM2) msg2 = MERRPARAM2;
-  else if (err == ERROVER) msg2 = MERROVER;
-  else if (err == ERRMISM) msg2 = MERRMISM;
-  else if (err == ERRFASTQ) msg2 = MERRFASTQ;
-  else if (err == ERROFFSET) msg2 = MERROFFSET;
-  else if (err == ERRGZIP) msg2 = MERRGZIP;
-  else if (err == ERRUNGET) msg2 = MERRUNGET;
-  else if (err == ERRTHREAD) msg2 = MERRTHREAD;
-  else msg2 = DEFERR;
-
-  fprintf(stderr, "Error! %s%s\n", msg, msg2);
+int error(char* msg, enum errCode err) {
+  fprintf(stderr, "Error! %s%s\n", msg, errMsg[err]);
   return -1;
 }
 

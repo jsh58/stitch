@@ -1,2 +1,2 @@
 stitch: stitch.c stitch.h
-	gcc -g -Wall -std=gnu99 -fopenmp -o stitch stitch.c -lz
+	gcc -g -Wall -std=gnu99 -fopenmp -O2 -o stitch stitch.c -lz

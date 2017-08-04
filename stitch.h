@@ -6,33 +6,27 @@
 */
 #define VERSION     "0.6"
 
-// fastq parts
-#define FASTQ       4       // lines per fastq read
-#define HEAD        0       //   |
-#define SEQ         1       //   | parts of a fastq read
-#define PLUS        2       //   |
-#define QUAL        3       //   |
-#define BEGIN       '@'     // beginning of header line
-#define PLUSCHAR    '+'     // beginning of 3rd line
-#define EXTRA       2       // save 2 extra strings for 2nd read:
-                            //   revComp(seq) and rev(qual)
-
 // constants
 #define MAX_SIZE    1024    // maximum length of input lines
 #define NOTMATCH    1.5f    // stitch failure
 #define COM         ", "    // separator for input file names
-#define OFFSET      33      // fastq quality offset (Sanger = 33)
 #define MINQUAL     2       // minimum quality score (Illumina)
 #define MAXQUAL     41      // maximum quality score
 #define NA          "NA"    // n/a
 
-// OMP locks
-#define OMP_LOCKS   5       // number of locks
-#define OUT         0       // lock for output fastq file(s)
-#define UN          1       // lock for unstitched fastq file(s)
-#define LOG         2       // lock for log file
-#define DOVE        3       // lock for dovetail log file
-#define ALN         4       // lock for formatted alignments file
+// default parameter values
+#define DEFOVER     20      // min. overlap
+#define DEFDOVE     50      // min. overlap for dovetailed reads
+#define DEFMISM     0.1f    // mismatch fraction
+#define OFFSET      33      // fastq quality offset (Sanger = 33)
+#define DEFTHR      1       // number of threads
+
+// fastq parts
+enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
+#define BEGIN       '@'     // beginning of header line
+#define PLUSCHAR    '+'     // beginning of 3rd line
+#define EXTRA       2       // save 2 extra strings for 2nd read:
+                            //   revComp(seq) and rev(qual)
 
 // command-line parameters
 #define HELP        "-h"
@@ -64,52 +58,33 @@
 #define TWOEXT      "_2.fastq"
 #define GZEXT       ".gz"   // for gzip compression
 
-// default parameter values
-#define DEFOVER     20    // min. overlap
-#define DEFDOVE     50    // min. overlap for dovetailed reads
-#define DEFMISM     0.1f  // mismatch fraction
-#define DEFTHR      1     // number of threads
+// OMP locks
+enum omp_locks { OUT, UN, LOG, DOVE, ALN, OMP_LOCKS };
 
 // error messages
-#define ERROPEN     0
-#define MERROPEN    ": cannot open file for reading"
-#define ERRCLOSE    1
-#define MERRCLOSE   "Cannot close file"
-#define ERROPENW    2
-#define MERROPENW   ": cannot open file for writing"
-#define ERRUNK      3
-#define MERRUNK     ": unknown nucleotide"
-#define ERRMEM      4
-#define MERRMEM     "Cannot allocate memory"
-#define ERRSEQ      5
-#define MERRSEQ     "Cannot load sequence"
-#define ERRQUAL     6
-#define MERRQUAL    "Sequence/quality scores do not match"
-#define ERRHEAD     7
-#define MERRHEAD    ": not matched in input files"
-#define ERRINT      8
-#define MERRINT     ": cannot convert to int"
-#define ERRFLOAT    9
-#define MERRFLOAT   ": cannot convert to float"
-#define ERRPARAM    10
-#define MERRPARAM   ": unknown command-line parameter"
-#define ERRPARAM2   11
-#define MERRPARAM2  ": unknown command-line parameter with no arg"
-#define ERROVER     12
-#define MERROVER    "Overlap must be greater than 0"
-#define ERRMISM     13
-#define MERRMISM    "Mismatch must be in [0,1)"
-#define ERRFASTQ    14
-#define MERRFASTQ   "Input file does not follow fastq format"
-#define ERROFFSET   15
-#define MERROFFSET  "Quality scores outside of set range"
-#define ERRUNGET    16
-#define MERRUNGET   "Failure in ungetc() call"
-#define ERRGZIP     17
-#define MERRGZIP    "Cannot pipe in gzip compressed file (use zcat instead)"
-#define ERRTHREAD   18
-#define MERRTHREAD  "Number of threads must be >= 1"
-#define DEFERR      "Unknown error"
+enum errCode { ERROPEN, ERRCLOSE, ERROPENW, ERRUNK, ERRMEM, ERRSEQ,
+  ERRQUAL, ERRHEAD, ERRINT, ERRFLOAT, ERRPARAM, ERRPARAM2, ERROVER,
+  ERRMISM, ERRFASTQ, ERROFFSET, ERRUNGET, ERRGZIP, ERRTHREAD, DEFERR };
+const char* errMsg[] = { ": cannot open file for reading",
+  "Cannot close file",
+  ": cannot open file for writing",
+  ": unknown nucleotide",
+  "Cannot allocate memory",
+  "Cannot load sequence",
+  "Sequence/quality scores do not match",
+  ": not matched in input files",
+  ": cannot convert to int",
+  ": cannot convert to float",
+  ": unknown command-line parameter",
+  ": unknown command-line parameter with no arg",
+  "Overlap must be greater than 0",
+  "Mismatch must be in [0,1)",
+  "Input file does not follow fastq format",
+  "Quality scores outside of set range",
+  "Failure in ungetc() call",
+  "Cannot pipe in gzip compressed file (use zcat instead)",
+  "Number of threads must be >= 1",
+  "Unknown error" };
 
 typedef union file {
   FILE* f;
