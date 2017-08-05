@@ -16,7 +16,7 @@
 
 // default parameter values
 #define DEFOVER     20      // min. overlap
-#define DEFDOVE     50      // min. overlap for dovetailed reads
+#define DEFDOVE     50      // min. overlap for dovetailed alignments
 #define DEFMISM     0.1f    // mismatch fraction
 #define OFFSET      33      // fastq quality offset (Sanger = 33)
 #define DEFTHR      1       // number of threads
@@ -44,13 +44,14 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
 #define MAXOPT      "-s"
 #define ADAPTOPT    "-a"
 #define ALNFILE     "-j"
-#define GZOPT       "-g"
+#define GZOPT       "-z"
 #define UNGZOPT     "-u"
 #define DIFFOPT     "-b"
 #define INTEROPT    "-t"
 #define QUALITY     "-q"
 #define THREADS     "-n"
 #define VERBOSE     "-v"
+#define VERBOSE2    "--verbose"
 #define VERSOPT     "--version"
 
 // extensions for output files

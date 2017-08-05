@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <zlib.h>
 #include <omp.h>
@@ -44,7 +45,7 @@ void usage(void) {
   fprintf(stderr, "                     (a fraction of the overlap length; def. %.2f)\n", DEFMISM);
   fprintf(stderr, "  %s               Use 'adapter-removal' mode (also sets %s option)\n", ADAPTOPT, DOVEOPT);
   fprintf(stderr, "  %s               Option to check for dovetailing (with 3' overhangs)\n", DOVEOPT);
-  fprintf(stderr, "  %s  <int>        Minimum overlap of dovetailed reads (def. %d)\n", DOVEOVER, DEFDOVE);
+  fprintf(stderr, "  %s  <int>        Minimum overlap of dovetailed alignments (def. %d)\n", DOVEOVER, DEFDOVE);
   fprintf(stderr, "  %s               Option to produce shortest stitched read\n", MAXOPT);
   fprintf(stderr, "I/O options:\n");
   fprintf(stderr, "  %s  <file>       Log file for stitching results of each read pair\n", LOGFILE);
@@ -124,7 +125,7 @@ char rc(char in) {
 /* char* getLine()
  * Reads the next line from a file.
  */
-char* getLine(char* line, int size, File in, int gz) {
+char* getLine(char* line, int size, File in, bool gz) {
   if (gz)
     return gzgets(in.gzf, line, size);
   else
@@ -136,7 +137,7 @@ char* getLine(char* line, int size, File in, int gz) {
  *   create consensus header.
  */
 void checkHeaders(char* head1, char* head2, char* header) {
-  int ok = 0;  // match boolean
+  bool ok = false;  // match boolean
   int j;
   for (j = 0; head1[j] != '\n' && head1[j] != '\0'; j++) {
     if (head1[j] != head2[j]) {
@@ -147,7 +148,7 @@ void checkHeaders(char* head1, char* head2, char* header) {
       head1[j] = '\0';  // trim head1 for err msg
       exit(error(head1, ERRHEAD));
     } else if (head1[j] == ' ')
-      ok = 1;  // headers match
+      ok = true;  // headers match
     header[j] = head1[j];
   }
   if (header[j - 1] == ' ')
@@ -170,7 +171,7 @@ void checkQual(char* qual, int len, int offset) {
  * Process the given sequence; save length;
  *   for 2nd read, save reversed seq/qual.
  */
-void processSeq(char** read, int* len, int i,
+void processSeq(char** read, int* len, bool i,
     int j, int offset) {
 
   // remove new-line character and save length
@@ -182,7 +183,7 @@ void processSeq(char** read, int* len, int i,
   else if (k != *len)
     exit(error("", ERRQUAL)); // seq/qual length mismatch
 
-  // for 2nd read, save revComp(seq) or rev(qual)
+  // for 2nd read (i == true), save revComp(seq) or rev(qual)
   if (i) {
     int dest = j + EXTRA; // save to 'extra' field of read2
     int m = 0;
@@ -204,21 +205,21 @@ void processSeq(char** read, int* len, int i,
     checkQual(read[j], k, offset);
 }
 
-/* int loadReads()
+/* bool loadReads()
  * Load a pair of reads. Check formatting, determine
- *   consensus header. Return 0 on EOF.
+ *   consensus header. Return false on EOF.
  */
-int loadReads(File in1, File in2, char** read1, char** read2,
+bool loadReads(File in1, File in2, char** read1, char** read2,
     char* header, int* len1, int* len2, int offset,
-    int gz1, int gz2) {
+    bool gz1, bool gz2) {
 
   // load both reads from input files (LOCK)
-  int flag = 0;  // boolean for EOF
+  bool flag = false;  // boolean for EOF
   #pragma omp critical
   for (int i = 0; i < 2; i++) {
     File in = in1;
     char** read = read1;
-    int gz = gz1;
+    bool gz = gz1;
     if (i) {
       in = in2;
       read = read2;
@@ -230,7 +231,7 @@ int loadReads(File in1, File in2, char** read1, char** read2,
       if (getLine(read[j], MAX_SIZE, in, gz) == NULL) {
         if (j == 0) {
           if (i == 0) {
-            flag = 1;  // EOF
+            flag = true;  // EOF
             break;
           } else {
             int k = 0;
@@ -248,7 +249,7 @@ int loadReads(File in1, File in2, char** read1, char** read2,
   }  // (UNLOCK)
 
   if (flag)
-    return 0;  // EOF
+    return false;  // EOF
 
   // check fastq formatting
   if (read1[HEAD][0] != BEGIN || read1[PLUS][0] != PLUSCHAR
@@ -256,15 +257,15 @@ int loadReads(File in1, File in2, char** read1, char** read2,
     exit(error("", ERRFASTQ));
 
   // process sequence/quality lines
-  processSeq(read1, len1, 0, SEQ, offset);
-  processSeq(read1, len1, 0, QUAL, offset);
-  processSeq(read2, len2, 1, SEQ, offset);
-  processSeq(read2, len2, 1, QUAL, offset);
+  processSeq(read1, len1, false, SEQ, offset);
+  processSeq(read1, len1, false, QUAL, offset);
+  processSeq(read2, len2, true, SEQ, offset);
+  processSeq(read2, len2, true, QUAL, offset);
 
   // check headers
   checkHeaders(read1[HEAD], read2[HEAD], header);
 
-  return 1;
+  return true;
 }
 
 /* float compare()
@@ -294,8 +295,8 @@ float compare(char* seq1, char* seq2, int length,
  */
 int findPos (char* seq1, char* seq2, char* qual1,
     char* qual2, int len1, int len2, int overlap,
-    int dovetail, int doveOverlap, float mismatch,
-    int maxLen, float* best) {
+    bool dovetail, int doveOverlap, float mismatch,
+    bool maxLen, float* best) {
 
   // check for regular (non-dovetailed) alignments
   int pos = len1 - overlap + 1;  // position of match
@@ -424,22 +425,22 @@ void printNoAdapt(FILE* out1, FILE* out2, char** read1,
   fputc('\n', out2);
 }
 
-/* int printResAdapt()
+/* bool printResAdapt()
  * Control printing of reads minus adapters.
  *   Return 1 if adapter found, else 0.
  */
-int printResAdapt(File out1, File out2, File dove,
-    int doveOpt, char* header, char** read1, char** read2,
-    int len1, int len2, int pos, float best, int gz,
+bool printResAdapt(File out1, File out2, File dove,
+    bool doveOpt, char* header, char** read1, char** read2,
+    int len1, int len2, int pos, float best, bool gz,
     omp_lock_t* lock) {
 
-  int adapter = 0;
+  bool adapter = false;
   int end1 = len1;
   int end2 = len2;
 
   // if found, identify locations of adapters
   if (len1 > len2 + pos || pos < 0) {
-    adapter = 1;
+    adapter = true;
     if (len1 > len2 + pos)
       end1 = len2 + pos;
     if (pos < 0)
@@ -571,10 +572,10 @@ void createSeq(char* seq1, char* seq2, char* qual1, char* qual2,
 /* void printRes()
  * Print stitched read.
  */
-void printRes(File out, File log, int logOpt, File dove,
-    int doveOpt, File aln, int alnOpt, char* header,
+void printRes(File out, File log, bool logOpt, File dove,
+    bool doveOpt, File aln, int alnOpt, char* header,
     char** read1, char** read2, int len1, int len2,
-    int pos, float best, int offset, int gz,
+    int pos, float best, int offset, bool gz,
     omp_lock_t* lock) {
   // log result
   if (logOpt) {
@@ -628,9 +629,9 @@ void printRes(File out, File log, int logOpt, File dove,
 /* void printFail()
  * Print stitch failure reads.
  */
-void printFail(File un1, File un2, int unOpt,
-    File log, int logOpt, char* header, char** read1,
-    char** read2, int gz, omp_lock_t* outLock,
+void printFail(File un1, File un2, bool unOpt,
+    File log, bool logOpt, char* header, char** read1,
+    char** read2, bool gz, omp_lock_t* outLock,
     omp_lock_t* logLock) {
   if (logOpt) {
     omp_set_lock(logLock);
@@ -658,12 +659,12 @@ void printFail(File un1, File un2, int unOpt,
  * Parses the input file. Produces the output file(s).
  */
 int readFile(File in1, File in2, File out, File out2,
-    File un1, File un2, int unOpt, File log,
-    int logOpt, int overlap, int dovetail, int doveOverlap,
-    File dove, int doveOpt, File aln, int alnOpt,
-    int adaptOpt, float mismatch, int maxLen,
+    File un1, File un2, bool unOpt, File log,
+    bool logOpt, int overlap, bool dovetail, int doveOverlap,
+    File dove, bool doveOpt, File aln, int alnOpt,
+    bool adaptOpt, float mismatch, bool maxLen,
     int* stitch, int offset,
-    int gz1, int gz2, int gzOut, int threads) {
+    bool gz1, bool gz2, bool gzOut, int threads) {
 
   // initialize omp locks -- out, un, log, dove, aln
   omp_lock_t lock[OMP_LOCKS];
@@ -692,7 +693,7 @@ int readFile(File in1, File in2, File out, File out2,
         &len1, &len2, offset, gz1, gz2)) {
 
       // find optimal overlap
-      float best = NOTMATCH;
+      float best = 1.0f;
       int pos = findPos(read1[SEQ], read2[SEQ + EXTRA + 1],
         read1[QUAL], read2[QUAL + EXTRA], len1, len2, overlap,
         dovetail, doveOverlap, mismatch, maxLen, &best);
@@ -746,7 +747,7 @@ int readFile(File in1, File in2, File out, File out2,
 /* void openWrite()
  * Open a file for writing (stdout if file is '-').
  */
-void openWrite(char* outFile, File* out, int gz) {
+void openWrite(char* outFile, File* out, bool gz) {
   if (gz) {
     if (!strcmp(outFile + strlen(outFile) - strlen(GZEXT), GZEXT)
         || !strcmp(outFile, "/dev/null"))
@@ -779,9 +780,9 @@ void openWrite(char* outFile, File* out, int gz) {
 void openFiles(char* outFile, File* out, File* out2,
     char* unFile, File* un1, File* un2,
     char* logFile, File* log,
-    char* doveFile, File* dove, int dovetail,
+    char* doveFile, File* dove, bool dovetail,
     char* alnFile, File* aln,
-    int adaptOpt, int gz, int interOpt) {
+    bool adaptOpt, bool gz, bool interOpt) {
 
   if (adaptOpt) {
     if (interOpt)
@@ -829,33 +830,33 @@ void openFiles(char* outFile, File* out, File* out2,
       }
     }
     if (logFile != NULL) {
-      openWrite(logFile, log, 0);
+      openWrite(logFile, log, false);
       fprintf(log->f, "Read\tOverlapLen\tStitchedLen\tMismatch\n");
     }
     if (alnFile != NULL)
-      openWrite(alnFile, aln, 0);
+      openWrite(alnFile, aln, false);
   }
 
   if (dovetail && doveFile != NULL) {
-    openWrite(doveFile, dove, 0);
+    openWrite(doveFile, dove, false);
     fprintf(dove->f, "Read\tAdapter_R1\tAdapter_R2\n");
   }
 }
 
-/* int openRead()
+/* bool openRead()
  * Open a file for reading (stdin if file is '-').
  *   Return 1 if gzip compressed.
  */
-int openRead(char* inFile, File* in) {
+bool openRead(char* inFile, File* in) {
 
   // open file or stdin
-  int stdBool = (strcmp(inFile, "-") ? 0 : 1); // stdin boolean
-  FILE* dummy = (stdBool ? stdin : fopen(inFile, "r"));
+  bool stdinBool = (strcmp(inFile, "-") ? false : true);
+  FILE* dummy = (stdinBool ? stdin : fopen(inFile, "r"));
   if (dummy == NULL)
     exit(error(inFile, ERROPEN));
 
   // check for gzip compression: magic number 0x1F, 0x8B
-  int gzip = 1;
+  bool gzip = true;
   int save = 0;  // first char to pushback (for stdin)
   int i, j;
   for (i = 0; i < 2; i++) {
@@ -864,7 +865,7 @@ int openRead(char* inFile, File* in) {
       exit(error(inFile, ERROPEN));
     if ( (i && (unsigned char) j != 0x8B)
         || (! i && (unsigned char) j != 0x1F) ) {
-      gzip = 0;
+      gzip = false;
       break;
     }
     if (! i)
@@ -872,7 +873,7 @@ int openRead(char* inFile, File* in) {
   }
 
   // for stdin, push back chars
-  if (stdBool) {
+  if (stdinBool) {
     if (gzip)
       exit(error("", ERRGZIP));
     if (ungetc(j, dummy) == EOF)
@@ -889,7 +890,7 @@ int openRead(char* inFile, File* in) {
     if (in->gzf == NULL)
       exit(error(inFile, ERROPEN));
   } else {
-    if (! stdBool)
+    if (! stdinBool)
       rewind(dummy);
     in->f = dummy;
   }
@@ -898,18 +899,19 @@ int openRead(char* inFile, File* in) {
 }
 
 /* void getParams()
- * Parses the command line.
+ * Parse the command line. Check for errors.
+ *   Loop through input files.
  */
 void getParams(int argc, char** argv) {
 
   char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
     *unFile = NULL, *logFile = NULL, *doveFile = NULL,
     *alnFile = NULL;
-  int overlap = DEFOVER, dovetail = 0, doveOverlap = DEFDOVE,
-    adaptOpt = 0, maxLen = 1, gzOut = 0, diffOpt = 0,
-    interOpt = 0, offset = OFFSET, threads = DEFTHR;
-  int verbose = 0;
+  int overlap = DEFOVER, doveOverlap = DEFDOVE, gzOut = 0,
+    offset = OFFSET, threads = DEFTHR;
   float mismatch = DEFMISM;
+  bool dovetail = false, adaptOpt = false, maxLen = true,
+    diffOpt = false, interOpt = false, verbose = false;
 
   // parse argv
   for (int i = 1; i < argc; i++) {
@@ -918,21 +920,21 @@ void getParams(int argc, char** argv) {
     else if (!strcmp(argv[i], VERSOPT))
       printVersion();
     else if (!strcmp(argv[i], MAXOPT))
-      maxLen = 0;
+      maxLen = false;
     else if (!strcmp(argv[i], DOVEOPT))
-      dovetail = 1;
+      dovetail = true;
     else if (!strcmp(argv[i], ADAPTOPT))
-      adaptOpt = 1;
+      adaptOpt = true;
     else if (!strcmp(argv[i], GZOPT))
       gzOut = 1;
     else if (!strcmp(argv[i], UNGZOPT))
       gzOut = -1;
     else if (!strcmp(argv[i], DIFFOPT))
-      diffOpt = 1;
+      diffOpt = true;
     else if (!strcmp(argv[i], INTEROPT))
-      interOpt = 1;
-    else if (!strcmp(argv[i], VERBOSE))
-      verbose = 1;
+      interOpt = true;
+    else if (!strcmp(argv[i], VERBOSE) || !strcmp(argv[i], VERBOSE2))
+      verbose = true;
     else if (i < argc - 1) {
       if (!strcmp(argv[i], OUTFILE))
         outFile = argv[++i];
@@ -967,11 +969,11 @@ void getParams(int argc, char** argv) {
   // check for parameter errors
   if (outFile == NULL || inFile1 == NULL)
     usage();
-  int inter = 0;  // interleaved input boolean
+  bool inter = false;  // interleaved input
   if (inFile2 == NULL) {
     if (verbose)
       fprintf(stderr, "Warning: only one input file specified -- assuming interleaved\n");
-    inter = 1;
+    inter = true;
   }
   if (overlap <= 0 || doveOverlap <= 0)
     exit(error("", ERROVER));
@@ -982,7 +984,7 @@ void getParams(int argc, char** argv) {
 
   // adjust parameters for adapter-removal mode
   if (adaptOpt) {
-    dovetail = 1;
+    dovetail = true;
     unFile = logFile = alnFile = NULL;
   }
   int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
@@ -1006,8 +1008,8 @@ void getParams(int argc, char** argv) {
 
     // open files
     File in1, in2;
-    int gz1 = openRead(file1, &in1);
-    int gz2 = gz1;
+    bool gz1 = openRead(file1, &in1);
+    bool gz2 = gz1;
     if (! inter)
       gz2 = openRead(file2, &in2);
 
