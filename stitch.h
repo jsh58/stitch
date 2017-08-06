@@ -28,31 +28,37 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
 #define EXTRA       2       // save 2 extra strings for 2nd read:
                             //   revComp(seq) and rev(qual)
 
-// command-line parameters
-#define HELP        "-h"
-#define HELP2       "--help"
-#define FIRST       "-1"
-#define SECOND      "-2"
-#define OUTFILE     "-o"
-#define UNFILE      "-f"
-#define LOGFILE     "-l"
-#define OVERLAP     "-m"
-#define MISMATCH    "-p"
-#define DOVEOPT     "-d"
-#define DOVEOVER    "-e"
-#define DOVEFILE    "-c"
-#define MAXOPT      "-s"
-#define ADAPTOPT    "-a"
-#define ALNFILE     "-j"
-#define GZOPT       "-z"
-#define UNGZOPT     "-u"
-#define DIFFOPT     "-b"
-#define INTEROPT    "-t"
-#define QUALITY     "-q"
-#define THREADS     "-n"
-#define VERBOSE     "-v"
-#define VERBOSE2    "--verbose"
-#define VERSOPT     "--version"
+// command-line options
+#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyiq:n:vV"
+#define HELP        'h'
+#define FIRST       '1'
+#define SECOND      '2'
+#define OUTFILE     'o'
+#define UNFILE      'f'
+#define LOGFILE     'l'
+#define OVERLAP     'm'
+#define MISMATCH    'p'
+#define DOVEOPT     'd'
+#define DOVEOVER    'e'
+#define DOVEFILE    'c'
+#define MAXOPT      's'
+#define ADAPTOPT    'a'
+#define ALNFILE     'j'
+#define DIFFOPT     'b'
+#define GZOPT       'z'
+#define UNGZOPT     'y'
+#define INTEROPT    'i'
+#define QUALITY     'q'
+#define THREADS     'n'
+#define VERBOSE     'v'
+#define VERSOPT     'V'
+
+static struct option long_options[] = {
+  {"help", no_argument, NULL, HELP},
+  {"verbose", no_argument, NULL, VERBOSE},
+  {"version", no_argument, NULL, VERSOPT},
+  {0, 0, 0, 0}
+};
 
 // extensions for output files
 #define ONEEXT      "_1.fastq"
@@ -63,9 +69,11 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
 enum omp_locks { OUT, UN, LOG, DOVE, ALN, OMP_LOCKS };
 
 // error messages
-enum errCode { ERROPEN, ERRCLOSE, ERROPENW, ERRUNK, ERRMEM, ERRSEQ,
-  ERRQUAL, ERRHEAD, ERRINT, ERRFLOAT, ERRPARAM, ERRPARAM2, ERROVER,
-  ERRMISM, ERRFASTQ, ERROFFSET, ERRUNGET, ERRGZIP, ERRTHREAD, DEFERR };
+enum errCode { ERROPEN, ERRCLOSE, ERROPENW, ERRUNK, ERRMEM,
+  ERRSEQ, ERRQUAL, ERRHEAD, ERRINT, ERRFLOAT, ERRPARAM,
+  ERROVER, ERRMISM, ERRFASTQ, ERROFFSET, ERRUNGET, ERRGZIP,
+  ERRTHREAD, ERRNAME, DEFERR
+};
 const char* errMsg[] = { ": cannot open file for reading",
   "Cannot close file",
   ": cannot open file for writing",
@@ -76,8 +84,7 @@ const char* errMsg[] = { ": cannot open file for reading",
   ": not matched in input files",
   ": cannot convert to int",
   ": cannot convert to float",
-  ": unknown command-line parameter",
-  ": unknown command-line parameter with no arg",
+  ": unknown command-line argument",
   "Overlap must be greater than 0",
   "Mismatch must be in [0,1)",
   "Input file does not follow fastq format",
@@ -85,7 +92,9 @@ const char* errMsg[] = { ": cannot open file for reading",
   "Failure in ungetc() call",
   "Cannot pipe in gzip compressed file (use zcat instead)",
   "Number of threads must be >= 1",
-  "Unknown error" };
+  ": output filename cannot start with '-'",
+  "Unknown error"
+};
 
 typedef union file {
   FILE* f;

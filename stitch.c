@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <getopt.h>
 #include <zlib.h>
 #include <omp.h>
 #include "stitch.h"
@@ -30,35 +31,34 @@ void printVersion(void) {
  * Prints usage information.
  */
 void usage(void) {
-  fprintf(stderr, "Usage: ./stitch {%s <file> %s <file>", FIRST, SECOND);
-  fprintf(stderr, " %s <file>}  [optional arguments]\n", OUTFILE);
+  fprintf(stderr, "Usage: ./stitch {-%c <file> -%c <file>", FIRST, SECOND);
+  fprintf(stderr, " -%c <file>}  [optional arguments]\n", OUTFILE);
   fprintf(stderr, "Required arguments:\n");
-  fprintf(stderr, "  %s  <file>       Input FASTQ file with reads from forward direction\n", FIRST);
-  fprintf(stderr, "  %s  <file>       Input FASTQ file with reads from reverse direction\n", SECOND);
-  fprintf(stderr, "  %s  <file>       Output FASTQ file(s):\n", OUTFILE);
+  fprintf(stderr, "  -%c  <file>       Input FASTQ file with reads from forward direction\n", FIRST);
+  fprintf(stderr, "  -%c  <file>       Input FASTQ file with reads from reverse direction\n", SECOND);
+  fprintf(stderr, "  -%c  <file>       Output FASTQ file(s):\n", OUTFILE);
   fprintf(stderr, "                   - in 'stitch' mode (def.), the file of merged reads\n");
-  fprintf(stderr, "                   - in 'adapter-removal' mode (%s), the output files\n", ADAPTOPT);
+  fprintf(stderr, "                   - in 'adapter-removal' mode (-%c), the output files\n", ADAPTOPT);
   fprintf(stderr, "                     will be <file>%s and <file>%s\n", ONEEXT, TWOEXT);
   fprintf(stderr, "Alignment parameters:\n");
-  fprintf(stderr, "  %s  <int>        Minimum overlap of the paired-end reads (def. %d)\n", OVERLAP, DEFOVER);
-  fprintf(stderr, "  %s  <float>      Mismatches to allow in the overlapped region\n", MISMATCH);
+  fprintf(stderr, "  -%c  <int>        Minimum overlap of the paired-end reads (def. %d)\n", OVERLAP, DEFOVER);
+  fprintf(stderr, "  -%c  <float>      Mismatches to allow in the overlapped region\n", MISMATCH);
   fprintf(stderr, "                     (a fraction of the overlap length; def. %.2f)\n", DEFMISM);
-  fprintf(stderr, "  %s               Use 'adapter-removal' mode (also sets %s option)\n", ADAPTOPT, DOVEOPT);
-  fprintf(stderr, "  %s               Option to check for dovetailing (with 3' overhangs)\n", DOVEOPT);
-  fprintf(stderr, "  %s  <int>        Minimum overlap of dovetailed alignments (def. %d)\n", DOVEOVER, DEFDOVE);
-  fprintf(stderr, "  %s               Option to produce shortest stitched read\n", MAXOPT);
+  fprintf(stderr, "  -%c               Use 'adapter-removal' mode (also sets -%c option)\n", ADAPTOPT, DOVEOPT);
+  fprintf(stderr, "  -%c               Option to check for dovetailing (with 3' overhangs)\n", DOVEOPT);
+  fprintf(stderr, "  -%c  <int>        Minimum overlap of dovetailed alignments (def. %d)\n", DOVEOVER, DEFDOVE);
+  fprintf(stderr, "  -%c               Option to produce shortest stitched read\n", MAXOPT);
   fprintf(stderr, "I/O options:\n");
-  fprintf(stderr, "  %s  <file>       Log file for stitching results of each read pair\n", LOGFILE);
-  fprintf(stderr, "  %s  <file>       FASTQ files for reads that failed stitching\n", UNFILE);
+  fprintf(stderr, "  -%c  <file>       Log file for stitching results of each read pair\n", LOGFILE);
+  fprintf(stderr, "  -%c  <file>       FASTQ files for reads that failed stitching\n", UNFILE);
   fprintf(stderr, "                     (output as <file>%s and <file>%s)\n", ONEEXT, TWOEXT);
-  fprintf(stderr, "  %s  <file>       Log file for dovetailed reads (adapter sequences)\n", DOVEFILE);
-  fprintf(stderr, "  %s  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
-  fprintf(stderr, "  %s               Option to print mismatches only to %s log file\n", DIFFOPT, ALNFILE);
-  fprintf(stderr, "  %s/%s            Option to gzip (%s) or not (%s) FASTQ output(s)\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
-  fprintf(stderr, "  %s               Option to produce interleaved FASTQ output(s)\n", INTEROPT);
-  fprintf(stderr, "  %s  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
-  fprintf(stderr, "  %s  <int>        Number of threads to use (def. %d)\n", THREADS, DEFTHR);
-  fprintf(stderr, "  %s               Option to print status updates/counts to stderr\n", VERBOSE);
+  fprintf(stderr, "  -%c  <file>       Log file for dovetailed reads (adapter sequences)\n", DOVEFILE);
+  fprintf(stderr, "  -%c  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
+  fprintf(stderr, "  -%c/-%c            Option to gzip (-%c) or not (-%c) FASTQ output(s)\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
+  fprintf(stderr, "  -%c               Option to produce interleaved FASTQ output(s)\n", INTEROPT);
+  fprintf(stderr, "  -%c  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
+  fprintf(stderr, "  -%c  <int>        Number of threads to use (def. %d)\n", THREADS, DEFTHR);
+  fprintf(stderr, "  -%c               Option to print status updates/counts to stderr\n", VERBOSE);
   exit(-1);
 }
 
@@ -113,10 +113,8 @@ char rc(char in) {
   else if (in == 'G') out = 'C';
   else if (in == 'N') out = 'N';
   else {
-    char msg[4] = "";
-    msg[0] = msg[2] = '\'';
+    char msg[4] = "' '";
     msg[1] = in;
-    msg[3] = '\0';
     exit(error(msg, ERRUNK));
   }
   return out;
@@ -748,6 +746,8 @@ int readFile(File in1, File in2, File out, File out2,
  * Open a file for writing (stdout if file is '-').
  */
 void openWrite(char* outFile, File* out, bool gz) {
+  if (outFile[0] == '-' && strlen(outFile) > 1)
+    exit(error(outFile, ERRNAME));
   if (gz) {
     if (!strcmp(outFile + strlen(outFile) - strlen(GZEXT), GZEXT)
         || !strcmp(outFile, "/dev/null"))
@@ -899,11 +899,12 @@ bool openRead(char* inFile, File* in) {
 }
 
 /* void getParams()
- * Parse the command line. Check for errors.
+ * Parse the command-line. Check for errors.
  *   Loop through input files.
  */
 void getParams(int argc, char** argv) {
 
+  // default parameters/filenames
   char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
     *unFile = NULL, *logFile = NULL, *doveFile = NULL,
     *alnFile = NULL;
@@ -914,57 +915,35 @@ void getParams(int argc, char** argv) {
     diffOpt = false, interOpt = false, verbose = false;
 
   // parse argv
-  for (int i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], HELP) || !strcmp(argv[i], HELP2))
-      usage();
-    else if (!strcmp(argv[i], VERSOPT))
-      printVersion();
-    else if (!strcmp(argv[i], MAXOPT))
-      maxLen = false;
-    else if (!strcmp(argv[i], DOVEOPT))
-      dovetail = true;
-    else if (!strcmp(argv[i], ADAPTOPT))
-      adaptOpt = true;
-    else if (!strcmp(argv[i], GZOPT))
-      gzOut = 1;
-    else if (!strcmp(argv[i], UNGZOPT))
-      gzOut = -1;
-    else if (!strcmp(argv[i], DIFFOPT))
-      diffOpt = true;
-    else if (!strcmp(argv[i], INTEROPT))
-      interOpt = true;
-    else if (!strcmp(argv[i], VERBOSE) || !strcmp(argv[i], VERBOSE2))
-      verbose = true;
-    else if (i < argc - 1) {
-      if (!strcmp(argv[i], OUTFILE))
-        outFile = argv[++i];
-      else if (!strcmp(argv[i], FIRST))
-        inFile1 = argv[++i];
-      else if (!strcmp(argv[i], SECOND))
-        inFile2 = argv[++i];
-      else if (!strcmp(argv[i], UNFILE))
-        unFile = argv[++i];
-      else if (!strcmp(argv[i], LOGFILE))
-        logFile = argv[++i];
-      else if (!strcmp(argv[i], DOVEFILE))
-        doveFile = argv[++i];
-      else if (!strcmp(argv[i], ALNFILE))
-        alnFile = argv[++i];
-      else if (!strcmp(argv[i], OVERLAP))
-        overlap = getInt(argv[++i]);
-      else if (!strcmp(argv[i], DOVEOVER))
-        doveOverlap = getInt(argv[++i]);
-      else if (!strcmp(argv[i], MISMATCH))
-        mismatch = getFloat(argv[++i]);
-      else if (!strcmp(argv[i], QUALITY))
-        offset = getInt(argv[++i]);
-      else if (!strcmp(argv[i], THREADS))
-        threads = getInt(argv[++i]);
-      else
-        exit(error(argv[i], ERRPARAM));
-    } else
-      exit(error(argv[i], ERRPARAM2));
-  }
+  int c;
+  while ( (c = getopt_long(argc, argv, OPTIONS, long_options, NULL)) != -1 )
+    switch (c) {
+      case HELP: usage(); break;
+      case VERSOPT: printVersion(); break;
+      case MAXOPT: maxLen = false; break;
+      case DOVEOPT: dovetail = true; break;
+      case ADAPTOPT: adaptOpt = true; break;
+      case GZOPT: gzOut = 1; break;
+      case UNGZOPT: gzOut = -1; break;
+      case DIFFOPT: diffOpt = true; break;
+      case INTEROPT: interOpt = true; break;
+      case VERBOSE: verbose = true; break;
+      case OUTFILE: outFile = optarg; break;
+      case FIRST: inFile1 = optarg; break;
+      case SECOND: inFile2 = optarg; break;
+      case UNFILE: unFile = optarg; break;
+      case LOGFILE: logFile = optarg; break;
+      case DOVEFILE: doveFile = optarg; break;
+      case ALNFILE: alnFile = optarg; break;
+      case OVERLAP: overlap = getInt(optarg); break;
+      case DOVEOVER: doveOverlap = getInt(optarg); break;
+      case MISMATCH: mismatch = getFloat(optarg); break;
+      case QUALITY: offset = getInt(optarg); break;
+      case THREADS: threads = getInt(optarg); break;
+      default: exit(-1);
+    }
+  if (optind < argc)
+    exit(error(argv[optind], ERRPARAM));
 
   // check for parameter errors
   if (outFile == NULL || inFile1 == NULL)
