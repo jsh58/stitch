@@ -654,7 +654,9 @@ void printFail(File un1, File un2, bool unOpt,
 }
 
 /* int readFile()
- * Parses the input file. Produces the output file(s).
+ * Analyzes the reads in a set of input files.
+ *   Controls writing to the output file(s).
+ *   Multithreaded.
  */
 int readFile(File in1, File in2, File out, File out2,
     File un1, File un2, bool unOpt, File log,
@@ -898,77 +900,19 @@ bool openRead(char* inFile, File* in) {
   return gzip;
 }
 
-/* void getParams()
- * Parse the command-line. Check for errors.
- *   Loop through input files.
+/* void runProgram()
+ * Controls the opening/closing of files,
+ *   and analysis by readFile().
  */
-void getParams(int argc, char** argv) {
+void runProgram(char* outFile, char* inFile1,
+    char* inFile2, bool inter, char* unFile,
+    char* logFile, int overlap, bool dovetail,
+    char* doveFile, int doveOverlap, char* alnFile,
+    int alnOpt, bool adaptOpt, int gzOut,
+    bool interOpt, float mismatch, bool maxLen,
+    int offset, bool verbose, int threads) {
 
-  // default parameters/filenames
-  char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
-    *unFile = NULL, *logFile = NULL, *doveFile = NULL,
-    *alnFile = NULL;
-  int overlap = DEFOVER, doveOverlap = DEFDOVE, gzOut = 0,
-    offset = OFFSET, threads = DEFTHR;
-  float mismatch = DEFMISM;
-  bool dovetail = false, adaptOpt = false, maxLen = true,
-    diffOpt = false, interOpt = false, verbose = false;
-
-  // parse argv
-  int c;
-  while ( (c = getopt_long(argc, argv, OPTIONS, long_options, NULL)) != -1 )
-    switch (c) {
-      case HELP: usage(); break;
-      case VERSOPT: printVersion(); break;
-      case MAXOPT: maxLen = false; break;
-      case DOVEOPT: dovetail = true; break;
-      case ADAPTOPT: adaptOpt = true; break;
-      case GZOPT: gzOut = 1; break;
-      case UNGZOPT: gzOut = -1; break;
-      case DIFFOPT: diffOpt = true; break;
-      case INTEROPT: interOpt = true; break;
-      case VERBOSE: verbose = true; break;
-      case OUTFILE: outFile = optarg; break;
-      case FIRST: inFile1 = optarg; break;
-      case SECOND: inFile2 = optarg; break;
-      case UNFILE: unFile = optarg; break;
-      case LOGFILE: logFile = optarg; break;
-      case DOVEFILE: doveFile = optarg; break;
-      case ALNFILE: alnFile = optarg; break;
-      case OVERLAP: overlap = getInt(optarg); break;
-      case DOVEOVER: doveOverlap = getInt(optarg); break;
-      case MISMATCH: mismatch = getFloat(optarg); break;
-      case QUALITY: offset = getInt(optarg); break;
-      case THREADS: threads = getInt(optarg); break;
-      default: exit(-1);
-    }
-  if (optind < argc)
-    exit(error(argv[optind], ERRPARAM));
-
-  // check for parameter errors
-  if (outFile == NULL || inFile1 == NULL)
-    usage();
-  bool inter = false;  // interleaved input
-  if (inFile2 == NULL) {
-    if (verbose)
-      fprintf(stderr, "Warning: only one input file specified -- assuming interleaved\n");
-    inter = true;
-  }
-  if (overlap <= 0 || doveOverlap <= 0)
-    exit(error("", ERROVER));
-  if (mismatch < 0.0f || mismatch >= 1.0f)
-    exit(error("", ERRMISM));
-  if (threads < 1)
-    exit(error("", ERRTHREAD));
-
-  // adjust parameters for adapter-removal mode
-  if (adaptOpt) {
-    dovetail = true;
-    unFile = logFile = alnFile = NULL;
-  }
-  int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
-
-  // get first set of file names
+  // get first set of input file names
   char* end1, *end2;
   char* file1 = strtok_r(inFile1, COM, &end1);
   char* file2 = file1;
@@ -1026,7 +970,7 @@ void getParams(int argc, char** argv) {
         fprintf(stderr, "  Successfully stitched: %d\n", stitch);
     }
 
-    // close files
+    // close input files
     if ( (gz1 && gzclose(in1.gzf) != Z_OK) || (! gz1 && fclose(in1.f))
         || (! inter && ( (gz2 && gzclose(in2.gzf) != Z_OK)
         || (! gz2 && fclose(in2.f)) ) ) )
@@ -1063,10 +1007,88 @@ void getParams(int argc, char** argv) {
     exit(error("", ERRCLOSE));
 }
 
+/* void getArgs()
+ * Parse the command-line. Check for errors.
+ */
+void getArgs(int argc, char** argv) {
+
+  // default parameters/filenames
+  char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
+    *unFile = NULL, *logFile = NULL, *doveFile = NULL,
+    *alnFile = NULL;
+  int overlap = DEFOVER, doveOverlap = DEFDOVE, gzOut = 0,
+    offset = OFFSET, threads = DEFTHR;
+  float mismatch = DEFMISM;
+  bool dovetail = false, adaptOpt = false, maxLen = true,
+    diffOpt = false, interOpt = false, verbose = false;
+
+  // parse argv
+  int c;
+  while ( (c = getopt_long(argc, argv, OPTIONS, long_options, NULL)) != -1 )
+    switch (c) {
+      case HELP: usage(); break;
+      case VERSOPT: printVersion(); break;
+      case MAXOPT: maxLen = false; break;
+      case DOVEOPT: dovetail = true; break;
+      case ADAPTOPT: adaptOpt = true; break;
+      case GZOPT: gzOut = 1; break;
+      case UNGZOPT: gzOut = -1; break;
+      case DIFFOPT: diffOpt = true; break;
+      case INTEROPT: interOpt = true; break;
+      case VERBOSE: verbose = true; break;
+      case OUTFILE: outFile = optarg; break;
+      case FIRST: inFile1 = optarg; break;
+      case SECOND: inFile2 = optarg; break;
+      case UNFILE: unFile = optarg; break;
+      case LOGFILE: logFile = optarg; break;
+      case DOVEFILE: doveFile = optarg; break;
+      case ALNFILE: alnFile = optarg; break;
+      case OVERLAP: overlap = getInt(optarg); break;
+      case DOVEOVER: doveOverlap = getInt(optarg); break;
+      case MISMATCH: mismatch = getFloat(optarg); break;
+      case QUALITY: offset = getInt(optarg); break;
+      case THREADS: threads = getInt(optarg); break;
+      default: exit(-1);
+    }
+  if (optind < argc)
+    exit(error(argv[optind], ERRPARAM));
+
+  // check for argument errors
+  if (outFile == NULL || inFile1 == NULL) {
+    error("", ERRFILE);
+    usage();
+  }
+  bool inter = false;  // interleaved input
+  if (inFile2 == NULL) {
+    if (verbose)
+      fprintf(stderr, "Warning: only one input file specified -- assuming interleaved\n");
+    inter = true;
+  }
+  if (overlap <= 0 || doveOverlap <= 0)
+    exit(error("", ERROVER));
+  if (mismatch < 0.0f || mismatch >= 1.0f)
+    exit(error("", ERRMISM));
+  if (threads < 1)
+    exit(error("", ERRTHREAD));
+
+  // adjust parameters for adapter-removal mode
+  if (adaptOpt) {
+    dovetail = true;
+    unFile = logFile = alnFile = NULL;
+  }
+  int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
+
+  // send arguments to runProgram()
+  runProgram(outFile, inFile1, inFile2, inter, unFile,
+    logFile, overlap, dovetail, doveFile, doveOverlap,
+    alnFile, alnOpt, adaptOpt, gzOut, interOpt, mismatch,
+    maxLen, offset, verbose, threads);
+}
+
 /* int main()
  * Main.
  */
 int main(int argc, char* argv[]) {
-  getParams(argc, argv);
+  getArgs(argc, argv);
   return 0;
 }
