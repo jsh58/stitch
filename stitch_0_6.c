@@ -16,7 +16,7 @@
 #include <getopt.h>
 #include <zlib.h>
 #include <omp.h>
-#include "stitch.h"
+#include "stitch_0_6.h"
 
 /* void printVersion()
  * Print version and copyright.
