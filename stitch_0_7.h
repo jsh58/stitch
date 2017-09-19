@@ -4,21 +4,20 @@
 
   Header file for stitch.c.
 */
-#define VERSION     "0.6"
+#define VERSION     "0.7"
 
 // constants
 #define MAX_SIZE    1024    // maximum length of input lines (incl. seq/qual)
 #define NOTMATCH    1.5f    // stitch failure
 #define COM         ", "    // separator for input file names
-#define MINQUAL     2       // minimum quality score (Illumina)
-#define MAXQUAL     41      // maximum quality score
-#define NA          "NA"    // n/a (for log file)
+#define NA          "NA"    // n/a (for output log file)
 
 // default parameter values
 #define DEFOVER     20      // min. overlap
 #define DEFDOVE     50      // min. overlap for dovetailed alignments
 #define DEFMISM     0.1f    // mismatch fraction
 #define OFFSET      33      // fastq quality offset (Sanger = 33)
+#define MAXQUAL     40      // maximum quality score (0-based)
 #define DEFTHR      1       // number of threads
 
 // fastq parts
@@ -29,7 +28,7 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
                             //   revComp(seq) and rev(qual)
 
 // command-line options
-#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyiq:n:vV"
+#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyiq:u:n:vV"
 #define HELP        'h'
 #define FIRST       '1'
 #define SECOND      '2'
@@ -49,6 +48,7 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
 #define UNGZOPT     'y'
 #define INTEROPT    'i'
 #define QUALITY     'q'
+#define SETQUAL     'u'
 #define THREADS     'n'
 #define VERBOSE     'v'
 #define VERSOPT     'V'
@@ -104,7 +104,7 @@ typedef union file {
 } File;
 
 // error profiles -- matches and mismatches
-char match[41][41] = {
+char match[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
   {24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40},
   {24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40},
   {24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40},
@@ -148,7 +148,7 @@ char match[41][41] = {
   {38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 40, 40}
 };
 
-char mism[41][41] = {
+char mism[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 6, 9, 11, 13, 14, 16, 17, 18, 19, 20, 22, 23, 26, 29, 32, 35, 39, 40, 40},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 6, 9, 11, 13, 14, 16, 17, 18, 19, 20, 22, 23, 26, 29, 32, 35, 39, 40, 40},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 6, 9, 11, 13, 14, 16, 17, 18, 19, 20, 22, 23, 26, 29, 32, 35, 39, 40, 40},
