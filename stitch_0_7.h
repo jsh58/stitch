@@ -28,7 +28,7 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
                             //   revComp(seq) and rev(qual)
 
 // command-line options
-#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyiq:u:n:vV"
+#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyigq:u:n:vV"
 #define HELP        'h'
 #define FIRST       '1'
 #define SECOND      '2'
@@ -47,6 +47,7 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
 #define GZOPT       'z'
 #define UNGZOPT     'y'
 #define INTEROPT    'i'
+#define FJOINOPT    'g'
 #define QUALITY     'q'
 #define SETQUAL     'u'
 #define THREADS     'n'
