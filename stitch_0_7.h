@@ -28,7 +28,7 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
                             //   revComp(seq) and rev(qual)
 
 // command-line options
-#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyigq:u:n:vV"
+#define OPTIONS     "h1:2:o:f:l:m:p:de:c:saj:bzyigq:u:w:n:vV"
 #define HELP        'h'
 #define FIRST       '1'
 #define SECOND      '2'
@@ -50,6 +50,7 @@ enum fastq { HEAD, SEQ, PLUS, QUAL, FASTQ };  // lines of a fastq read
 #define FJOINOPT    'g'
 #define QUALITY     'q'
 #define SETQUAL     'u'
+#define QUALFILE    'w'
 #define THREADS     'n'
 #define VERBOSE     'v'
 #define VERSOPT     'V'
@@ -105,7 +106,7 @@ typedef union file {
 } File;
 
 // error profiles -- matches and mismatches
-char match[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
+const char match_profile[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
   {24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40},
   {24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40},
   {24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 26, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 36, 37, 37, 37, 38, 38, 39, 39, 40, 40},
@@ -149,7 +150,7 @@ char match[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
   {38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 39, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 40, 40}
 };
 
-char mism[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
+const char mismatch_profile[ MAXQUAL + 1 ][ MAXQUAL + 1 ] = {
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 6, 9, 11, 13, 14, 16, 17, 18, 19, 20, 22, 23, 26, 29, 32, 35, 39, 40, 40},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 6, 9, 11, 13, 14, 16, 17, 18, 19, 20, 22, 23, 26, 29, 32, 35, 39, 40, 40},
   {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 6, 9, 11, 13, 14, 16, 17, 18, 19, 20, 22, 23, 26, 29, 32, 35, 39, 40, 40},

@@ -56,7 +56,7 @@ void usage(void) {
   fprintf(stderr, "  -%c  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  -%c/-%c            Option to gzip (-%c) or not (-%c) FASTQ output(s)\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
   fprintf(stderr, "  -%c               Option to produce interleaved FASTQ output(s)\n", INTEROPT);
-  fprintf(stderr, "  -%c               Option to use 'fastq-join' method for quality scores\n", FJOINOPT);
+  fprintf(stderr, "  -%c               Option to use 'fastq-join' method for qual scores\n", FJOINOPT);
   fprintf(stderr, "  -%c  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
   fprintf(stderr, "  -%c  <int>        Maximum input quality score (0-based; def. %d)\n", SETQUAL, MAXQUAL);
   fprintf(stderr, "  -%c  <int>        Number of threads to use (def. %d)\n", THREADS, DEFTHR);
@@ -538,8 +538,9 @@ void printAln(File aln, char* header, char** read1,
  * Create stitched sequence (into seq1, qual1).
  *   Use empirical error profiles for quality scores.
  */
-void createSeq2(char* seq1, char* seq2, char* qual1, char* qual2,
-    int len1, int len2, int pos, int offset) {
+void createSeq2(char* seq1, char* seq2, char* qual1,
+    char* qual2, int len1, int len2, int pos,
+    int offset, char** match, char** mism) {
   int len = len2 + pos;  // length of stitched sequence
   for (int i = 0; i < len; i++) {
     if (i - pos < 0)
@@ -621,7 +622,7 @@ void printRes(File out, File log, bool logOpt, File dove,
     bool doveOpt, File aln, int alnOpt, char* header,
     char** read1, char** read2, int len1, int len2,
     int pos, float best, int offset, bool gz, bool fjoin,
-    omp_lock_t* lock) {
+    char** match, char** mism, omp_lock_t* lock) {
   // log result
   if (logOpt) {
     omp_set_lock(lock + LOG);
@@ -650,7 +651,7 @@ void printRes(File out, File log, bool logOpt, File dove,
       read2[QUAL + EXTRA], len1, len2, pos, offset);
   else
     createSeq2(read1[SEQ], read2[SEQ + EXTRA + 1], read1[QUAL],
-      read2[QUAL + EXTRA], len1, len2, pos, offset);
+      read2[QUAL + EXTRA], len1, len2, pos, offset, match, mism);
   omp_set_lock(lock + OUT);
   if (gz)
     gzprintf(out.gzf, "%s\n%s\n+\n%s\n", header,
@@ -716,7 +717,7 @@ int readFile(File in1, File in2, File out, File out2,
     bool adaptOpt, float mismatch, bool maxLen,
     int* stitch, int offset, int maxQual,
     bool gz1, bool gz2, bool gzOut, bool fjoin,
-    int threads) {
+    char** match, char** mism, int threads) {
 
   // initialize omp locks -- out, un, log, dove, aln
   omp_lock_t lock[OMP_LOCKS];
@@ -768,7 +769,7 @@ int readFile(File in1, File in2, File out, File out2,
         } else {
           printRes(out, log, logOpt, dove, doveOpt, aln, alnOpt,
             header, read1, read2, len1, len2, pos, best, offset,
-            gzOut, fjoin, lock);
+            gzOut, fjoin, match, mism, lock);
           stitchRed++;
         }
       }
@@ -899,7 +900,7 @@ void openFiles(char* outFile, File* out, File* out2,
 
 /* bool openRead()
  * Open a file for reading (stdin if file is '-').
- *   Return 1 if gzip compressed.
+ *   Return true if gzip compressed.
  */
 bool openRead(char* inFile, File* in) {
 
@@ -952,6 +953,17 @@ bool openRead(char* inFile, File* in) {
   return gzip;
 }
 
+/* void loadQual()
+ * Load quality score profile from a file.
+ */
+void loadQual(char* qualFile, int maxQual,
+    char*** match, char*** mism) {
+  File qual;
+  bool gz = openRead(qualFile, &qual);
+
+
+}
+
 /* void runProgram()
  * Controls the opening/closing of files,
  *   and analysis by readFile().
@@ -962,8 +974,8 @@ void runProgram(char* outFile, char* inFile1,
     char* doveFile, int doveOverlap, char* alnFile,
     int alnOpt, bool adaptOpt, int gzOut, bool fjoin,
     bool interOpt, float mismatch, bool maxLen,
-    int offset, int maxQual, bool verbose,
-    int threads) {
+    int offset, int maxQual, char* qualFile,
+    bool verbose, int threads) {
 
   // get first set of input file names
   char* end1, *end2;
@@ -974,19 +986,25 @@ void runProgram(char* outFile, char* inFile1,
 
   // loop through input files
   File out, out2, un1, un2, log, dove, aln; // output files
-  int i = 0;  // number of files processed
+  char** match, **mism;  // quality score profiles
+  int i = 0;  // count of files processed
   int tCount = 0, tStitch = 0;  // counting variables
   while (file1 && file2) {
 
-    // open files
+    // open input files
     File in1, in2;
     bool gz1 = openRead(file1, &in1);
     bool gz2 = gz1;
     if (! inter)
       gz2 = openRead(file2, &in2);
 
-    // on first iteration, open output files
+    // on first iteration, load quals and open outputs
     if (! i) {
+      // load quality score profile
+      if (! adaptOpt)
+        loadQual(qualFile, maxQual, &match, &mism);
+
+      // open output files
       if (gzOut == -1)
         gzOut = 0;
       else if (gz1 || gz2)
@@ -1009,7 +1027,8 @@ void runProgram(char* outFile, char* inFile1,
       overlap, dovetail, doveOverlap, dove,
       dovetail && doveFile != NULL, aln, alnOpt,
       adaptOpt, mismatch, maxLen, &stitch,
-      offset, maxQual, gz1, gz2, gzOut, fjoin, threads);
+      offset, maxQual, gz1, gz2, gzOut, fjoin,
+      match, mism, threads);
     tCount += count;
     tStitch += stitch;
 
@@ -1067,7 +1086,7 @@ void getArgs(int argc, char** argv) {
   // default parameters/filenames
   char* outFile = NULL, *inFile1 = NULL, *inFile2 = NULL,
     *unFile = NULL, *logFile = NULL, *doveFile = NULL,
-    *alnFile = NULL;
+    *alnFile = NULL, *qualFile = NULL;
   int overlap = DEFOVER, doveOverlap = DEFDOVE, gzOut = 0,
     offset = OFFSET, maxQual = MAXQUAL, threads = DEFTHR;
   float mismatch = DEFMISM;
@@ -1102,6 +1121,7 @@ void getArgs(int argc, char** argv) {
       case MISMATCH: mismatch = getFloat(optarg); break;
       case QUALITY: offset = getInt(optarg); break;
       case SETQUAL: maxQual = getInt(optarg); break;
+      case QUALFILE: qualFile = optarg; break;
       case THREADS: threads = getInt(optarg); break;
       default: exit(-1);
     }
@@ -1119,6 +1139,8 @@ void getArgs(int argc, char** argv) {
       fprintf(stderr, "Warning: only one input file specified -- assuming interleaved\n");
     inter = true;
   }
+  if (qualFile != NULL)
+    fjoin = false;
   if (overlap <= 0 || doveOverlap <= 0)
     exit(error("", ERROVER));
   if (mismatch < 0.0f || mismatch >= 1.0f)
@@ -1129,7 +1151,7 @@ void getArgs(int argc, char** argv) {
   // adjust parameters for adapter-removal mode
   if (adaptOpt) {
     dovetail = true;
-    unFile = logFile = alnFile = NULL;
+    unFile = logFile = alnFile = qualFile = NULL;
   }
   int alnOpt = (alnFile != NULL ? (diffOpt ? 2 : 1) : 0);
 
@@ -1137,7 +1159,8 @@ void getArgs(int argc, char** argv) {
   runProgram(outFile, inFile1, inFile2, inter, unFile,
     logFile, overlap, dovetail, doveFile, doveOverlap,
     alnFile, alnOpt, adaptOpt, gzOut, fjoin, interOpt,
-    mismatch, maxLen, offset, maxQual, verbose, threads);
+    mismatch, maxLen, offset, maxQual, qualFile, verbose,
+    threads);
 }
 
 /* int main()
