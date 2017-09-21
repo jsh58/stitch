@@ -10,6 +10,7 @@
 #define MAX_SIZE    1024    // maximum length of input lines (incl. seq/qual)
 #define NOTMATCH    1.5f    // stitch failure
 #define COM         ", "    // separator for input file names
+#define CSV         ",\t"   // separator for quality score profile
 #define NA          "NA"    // n/a (for output log file)
 
 // default parameter values
@@ -74,7 +75,7 @@ enum omp_locks { OUT, UN, LOG, DOVE, ALN, OMP_LOCKS };
 enum errCode { ERRFILE, ERROPEN, ERRCLOSE, ERROPENW, ERRUNK,
   ERRMEM, ERRSEQ, ERRQUAL, ERRHEAD, ERRINT, ERRFLOAT, ERRPARAM,
   ERROVER, ERRMISM, ERRFASTQ, ERROFFSET, ERRUNGET, ERRGZIP,
-  ERRTHREAD, ERRNAME, DEFERR
+  ERRTHREAD, ERRNAME, ERRRANGE, DEFERR
 };
 const char* errMsg[] = { "Need input/output files",
   ": cannot open file for reading",
@@ -96,6 +97,7 @@ const char* errMsg[] = { "Need input/output files",
   "Cannot pipe in gzip compressed file (use zcat instead)",
   "Number of threads must be >= 1",
   ": output filename cannot start with '-'",
+  "Quality score file missing values for score range",
   "Unknown error"
 };
 

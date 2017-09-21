@@ -56,7 +56,8 @@ void usage(void) {
   fprintf(stderr, "  -%c  <file>       Log file for formatted alignments of merged reads\n", ALNFILE);
   fprintf(stderr, "  -%c/-%c            Option to gzip (-%c) or not (-%c) FASTQ output(s)\n", GZOPT, UNGZOPT, GZOPT, UNGZOPT);
   fprintf(stderr, "  -%c               Option to produce interleaved FASTQ output(s)\n", INTEROPT);
-  fprintf(stderr, "  -%c               Option to use 'fastq-join' method for qual scores\n", FJOINOPT);
+  fprintf(stderr, "  -%c  <file>       Use given error profile for merged qual scores\n", QUALFILE);
+  fprintf(stderr, "  -%c               Use 'fastq-join' method for merged qual scores\n", FJOINOPT);
   fprintf(stderr, "  -%c  <int>        FASTQ quality offset (def. %d)\n", QUALITY, OFFSET);
   fprintf(stderr, "  -%c  <int>        Maximum input quality score (0-based; def. %d)\n", SETQUAL, MAXQUAL);
   fprintf(stderr, "  -%c  <int>        Number of threads to use (def. %d)\n", THREADS, DEFTHR);
@@ -954,13 +955,78 @@ bool openRead(char* inFile, File* in) {
 }
 
 /* void loadQual()
- * Load quality score profile from a file.
+ * Load quality score profiles from file.
  */
 void loadQual(char* qualFile, int maxQual,
     char*** match, char*** mism) {
   File qual;
   bool gz = openRead(qualFile, &qual);
+  char* line = memalloc(MAX_SIZE);
 
+  char** arr = NULL;  // array to save to
+  int i = 0, matIdx = 0, misIdx = 0;  // array indices
+  while (getLine(line, MAX_SIZE, qual, gz) != NULL) {
+    if (line[0] == '#' || line[0] == '\n') {
+      // determine target array
+      i = 0;
+      if (! strcmp(line + 1, "match\n"))
+        arr = *match;
+      else if (! strcmp(line + 1, "mismatch\n"))
+        arr = *mism;
+    } else if (arr == NULL) {
+      continue;
+    } else {
+      // save values to array
+      char* tok = strtok(line, CSV);
+      for (int j = 0; j < maxQual + 1; j++) {
+        if (tok == NULL)
+          exit(error("", ERRRANGE));
+        arr[i][j] = getInt(tok);
+        tok = strtok(NULL, CSV);
+      }
+      i++;
+      if ( (arr == *match && ++matIdx > maxQual)
+          || (arr == *mism && ++misIdx > maxQual) )
+        arr = NULL;
+    }
+  }
+
+  // make sure all values were loaded
+  if (matIdx < maxQual + 1 || misIdx < maxQual + 1)
+    exit(error("", ERRRANGE));
+
+  if ( (gz && gzclose(qual.gzf) != Z_OK) ||
+      (! gz && fclose(qual.f) ) )
+    exit(error("", ERRCLOSE));
+  free(line);
+}
+
+/* void saveQual()
+ * Save quality score profiles.
+ */
+void saveQual(char* qualFile, int maxQual,
+    char*** match, char*** mism) {
+
+  // allocate memory
+  *match = (char**) memalloc((maxQual + 1) * sizeof(char*));
+  *mism = (char**) memalloc((maxQual + 1) * sizeof(char*));
+  for (int i = 0; i < maxQual + 1; i++) {
+    (*match)[ i ] = (char*) memalloc(maxQual + 1);
+    (*mism)[ i ] = (char*) memalloc(maxQual + 1);
+  }
+
+  if (qualFile == NULL) {
+    // copy quality profile from const arrays
+    if (maxQual != MAXQUAL)
+      exit(error("", ERRRANGE));
+    for (int i = 0; i < maxQual + 1; i++)
+      for (int j = 0; j < maxQual + 1; j++) {
+        (*match)[ i ][ j ] = match_profile[ i ][ j ];
+        (*mism)[ i ][ j ] = mismatch_profile[ i ][ j ];
+      }
+  } else
+    // load from file
+    loadQual(qualFile, maxQual, match, mism);
 
 }
 
@@ -986,7 +1052,7 @@ void runProgram(char* outFile, char* inFile1,
 
   // loop through input files
   File out, out2, un1, un2, log, dove, aln; // output files
-  char** match, **mism;  // quality score profiles
+  char** match = NULL, **mism = NULL;  // quality score profiles
   int i = 0;  // count of files processed
   int tCount = 0, tStitch = 0;  // counting variables
   while (file1 && file2) {
@@ -1001,8 +1067,8 @@ void runProgram(char* outFile, char* inFile1,
     // on first iteration, load quals and open outputs
     if (! i) {
       // load quality score profile
-      if (! adaptOpt)
-        loadQual(qualFile, maxQual, &match, &mism);
+      if (! fjoin && ! adaptOpt)
+        saveQual(qualFile, maxQual, &match, &mism);
 
       // open output files
       if (gzOut == -1)
@@ -1061,6 +1127,16 @@ void runProgram(char* outFile, char* inFile1,
       fprintf(stderr, "  Adapters removed: %d\n", tStitch);
     else
       fprintf(stderr, "  Successfully stitched: %d\n", tStitch);
+  }
+
+  // free memory for qual score profiles
+  if (! fjoin && ! adaptOpt) {
+    for (int i = 0; i < maxQual + 1; i++) {
+      free(match[i]);
+      free(mism[i]);
+    }
+    free(match);
+    free(mism);
   }
 
   // close files
